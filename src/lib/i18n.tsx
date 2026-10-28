@@ -105,7 +105,20 @@ const it = {
   groupOf: (g: string) => `Nel gruppo ${g}`, monthPoints: 'Punti del mese', validProofs: 'Prove valide', trophies: (n: number): string => (n === 1 ? 'Trofeo' : 'Trofei'),
   kingOf: (m: string) => `Re di ${m}`, yourProofs: 'Le tue prove', proofsEmpty: 'Le foto e i video che carichi per le quest finiscono qui.',
   statusValid: 'Vale', statusVoting: 'Al voto', statusRejected: 'Non vale', trophyCase: 'Bacheca trofei',
-  settings: 'Impostazioni', language: 'Lingua', group: 'Gruppo'
+  settings: 'Impostazioni', language: 'Lingua', group: 'Gruppo',
+  createAccount: 'Crea un account', haveAccount: 'Ho già un account',
+  accountTitle: 'Il tuo account', accountSub: 'Con un account entri nel tuo profilo da telefono, tablet o computer, senza perdere gruppi e punti.',
+  signupTitle: 'Crea il tuo account', loginTitle: 'Bentornato', loginSub: 'Entra con il tuo nome utente e la password.',
+  nameLabel: 'Il tuo nome', nameHint: 'È il nome che vedono gli amici.',
+  usernameLabel: 'Nome utente', usernamePh: 'es. alex_rossi', usernameHint: 'Da 3 a 20 caratteri: lettere minuscole, numeri, punto o trattino basso.',
+  passwordLabel: 'Password', passwordHint: 'Almeno 8 caratteri. Per ora non si può recuperare: segnatela.', show: 'Mostra', hide: 'Nascondi',
+  signupBtn: 'Crea l’account', signingUp: 'Creo l’account…', loginBtn: 'Entra', loggingIn: 'Entro…',
+  toLogin: 'Hai già un account? Entra', toSignup: 'Non hai un account? Creane uno',
+  legacyTitle: 'Crea il tuo account', legacySub: 'Side Friends ora usa gli account. Creane uno: il tuo gruppo resta tuo, con tutti i punti, e potrai entrare anche da altri dispositivi.',
+  groupSetupTitle: 'Entra in un gruppo', groupSetupSub: 'Crea un gruppo nuovo o entra con il codice di un amico. Puoi far parte di più gruppi.',
+  yourGroups: 'I tuoi gruppi', addGroup: 'Crea o entra in un altro gruppo', active: 'Attivo',
+  switchedTo: (g: string): string => `Ora sei in «${g}».`, joinedToast: (g: string): string => `Sei entrato in «${g}».`,
+  account: 'Account', logOut: 'Esci dall’account', logOutWarn: 'Su questo dispositivo dovrai rientrare con nome utente e password. Gruppi e punti restano tuoi.', loggedOut: 'Sei uscito dall’account.'
 };
 type Dict = typeof it;
 
@@ -201,7 +214,20 @@ const en: Dict = {
   groupOf: g => `In the group ${g}`, monthPoints: 'Points this month', validProofs: 'Valid proofs', trophies: n => (n === 1 ? 'Trophy' : 'Trophies'),
   kingOf: m => `King of ${m}`, yourProofs: 'Your proofs', proofsEmpty: 'The photos and videos you upload for quests end up here.',
   statusValid: 'Counts', statusVoting: 'Voting', statusRejected: 'Nope', trophyCase: 'Trophy case',
-  settings: 'Settings', language: 'Language', group: 'Group'
+  settings: 'Settings', language: 'Language', group: 'Group',
+  createAccount: 'Create an account', haveAccount: 'I already have an account',
+  accountTitle: 'Your account', accountSub: 'With an account you can use your profile on any phone, tablet or computer, and keep your groups and points.',
+  signupTitle: 'Create your account', loginTitle: 'Welcome back', loginSub: 'Sign in with your username and password.',
+  nameLabel: 'Your name', nameHint: 'This is the name your friends see.',
+  usernameLabel: 'Username', usernamePh: 'e.g. alex_smith', usernameHint: '3 to 20 characters: lowercase letters, numbers, dot or underscore.',
+  passwordLabel: 'Password', passwordHint: 'At least 8 characters. It can’t be recovered yet, so write it down.', show: 'Show', hide: 'Hide',
+  signupBtn: 'Create account', signingUp: 'Creating your account…', loginBtn: 'Sign in', loggingIn: 'Signing in…',
+  toLogin: 'Already have an account? Sign in', toSignup: 'No account yet? Create one',
+  legacyTitle: 'Create your account', legacySub: 'Side Friends now uses accounts. Create one: your group stays yours with all its points, and you can sign in on other devices too.',
+  groupSetupTitle: 'Join a group', groupSetupSub: 'Create a new group or join with a friend’s code. You can be in more than one group.',
+  yourGroups: 'Your groups', addGroup: 'Create or join another group', active: 'Active',
+  switchedTo: g => `You’re now in “${g}”.`, joinedToast: g => `You joined “${g}”.`,
+  account: 'Account', logOut: 'Sign out', logOutWarn: 'On this device you’ll need to sign in again with your username and password. Your groups and points stay yours.', loggedOut: 'You signed out.'
 };
 
 const es: Dict = {
@@ -296,7 +322,20 @@ const es: Dict = {
   groupOf: g => `En el grupo ${g}`, monthPoints: 'Puntos del mes', validProofs: 'Pruebas válidas', trophies: n => (n === 1 ? 'Trofeo' : 'Trofeos'),
   kingOf: m => `Rey de ${m}`, yourProofs: 'Tus pruebas', proofsEmpty: 'Las fotos y vídeos que subas para las quests aparecerán aquí.',
   statusValid: 'Vale', statusVoting: 'En voto', statusRejected: 'No vale', trophyCase: 'Vitrina de trofeos',
-  settings: 'Ajustes', language: 'Idioma', group: 'Grupo'
+  settings: 'Ajustes', language: 'Idioma', group: 'Grupo',
+  createAccount: 'Crear una cuenta', haveAccount: 'Ya tengo una cuenta',
+  accountTitle: 'Tu cuenta', accountSub: 'Con una cuenta entras en tu perfil desde el móvil, la tablet o el ordenador, sin perder grupos ni puntos.',
+  signupTitle: 'Crea tu cuenta', loginTitle: 'Hola de nuevo', loginSub: 'Entra con tu nombre de usuario y tu contraseña.',
+  nameLabel: 'Tu nombre', nameHint: 'Es el nombre que ven tus amigos.',
+  usernameLabel: 'Nombre de usuario', usernamePh: 'ej. alex_garcia', usernameHint: 'De 3 a 20 caracteres: minúsculas, números, punto o guion bajo.',
+  passwordLabel: 'Contraseña', passwordHint: 'Al menos 8 caracteres. Todavía no se puede recuperar: apúntala.', show: 'Mostrar', hide: 'Ocultar',
+  signupBtn: 'Crear la cuenta', signingUp: 'Creando la cuenta…', loginBtn: 'Entrar', loggingIn: 'Entrando…',
+  toLogin: '¿Ya tienes cuenta? Entra', toSignup: '¿No tienes cuenta? Crea una',
+  legacyTitle: 'Crea tu cuenta', legacySub: 'Side Friends ahora usa cuentas. Crea una: tu grupo sigue siendo tuyo, con todos los puntos, y podrás entrar desde otros dispositivos.',
+  groupSetupTitle: 'Entra en un grupo', groupSetupSub: 'Crea un grupo nuevo o entra con el código de un amigo. Puedes estar en varios grupos.',
+  yourGroups: 'Tus grupos', addGroup: 'Crear o entrar en otro grupo', active: 'Activo',
+  switchedTo: g => `Ahora estás en «${g}».`, joinedToast: g => `Has entrado en «${g}».`,
+  account: 'Cuenta', logOut: 'Cerrar sesión', logOutWarn: 'En este dispositivo tendrás que volver a entrar con tu usuario y contraseña. Tus grupos y puntos siguen siendo tuyos.', loggedOut: 'Has cerrado sesión.'
 };
 
 const fr: Dict = {
@@ -391,7 +430,20 @@ const fr: Dict = {
   groupOf: g => `Dans le groupe ${g}`, monthPoints: 'Points du mois', validProofs: 'Preuves validées', trophies: n => (n === 1 ? 'Trophée' : 'Trophées'),
   kingOf: m => `Roi de ${m}`, yourProofs: 'Tes preuves', proofsEmpty: 'Les photos et vidéos que tu envoies pour les quêtes arrivent ici.',
   statusValid: 'Validé', statusVoting: 'Au vote', statusRejected: 'Refusé', trophyCase: 'Vitrine des trophées',
-  settings: 'Réglages', language: 'Langue', group: 'Groupe'
+  settings: 'Réglages', language: 'Langue', group: 'Groupe',
+  createAccount: 'Créer un compte', haveAccount: 'J’ai déjà un compte',
+  accountTitle: 'Ton compte', accountSub: 'Avec un compte, tu retrouves ton profil sur téléphone, tablette ou ordinateur, sans perdre tes groupes ni tes points.',
+  signupTitle: 'Crée ton compte', loginTitle: 'Bon retour', loginSub: 'Connecte-toi avec ton nom d’utilisateur et ton mot de passe.',
+  nameLabel: 'Ton prénom', nameHint: 'C’est le nom que voient tes amis.',
+  usernameLabel: 'Nom d’utilisateur', usernamePh: 'ex. alex_martin', usernameHint: 'De 3 à 20 caractères : minuscules, chiffres, point ou tiret bas.',
+  passwordLabel: 'Mot de passe', passwordHint: 'Au moins 8 caractères. Il ne peut pas encore être récupéré : note-le.', show: 'Afficher', hide: 'Masquer',
+  signupBtn: 'Créer le compte', signingUp: 'Création du compte…', loginBtn: 'Se connecter', loggingIn: 'Connexion…',
+  toLogin: 'Déjà un compte ? Connecte-toi', toSignup: 'Pas de compte ? Crées-en un',
+  legacyTitle: 'Crée ton compte', legacySub: 'Side Friends utilise maintenant des comptes. Crée le tien : ton groupe reste à toi avec tous ses points, et tu pourras te connecter depuis d’autres appareils.',
+  groupSetupTitle: 'Rejoins un groupe', groupSetupSub: 'Crée un nouveau groupe ou rejoins-en un avec le code d’un ami. Tu peux faire partie de plusieurs groupes.',
+  yourGroups: 'Tes groupes', addGroup: 'Créer ou rejoindre un autre groupe', active: 'Actif',
+  switchedTo: g => `Tu es maintenant dans « ${g} ».`, joinedToast: g => `Tu as rejoint « ${g} ».`,
+  account: 'Compte', logOut: 'Se déconnecter', logOutWarn: 'Sur cet appareil, tu devras te reconnecter avec ton nom d’utilisateur et ton mot de passe. Tes groupes et tes points restent à toi.', loggedOut: 'Tu t’es déconnecté.'
 };
 
 const de: Dict = {
@@ -486,7 +538,20 @@ const de: Dict = {
   groupOf: g => `In der Gruppe ${g}`, monthPoints: 'Punkte im Monat', validProofs: 'Gültige Beweise', trophies: n => (n === 1 ? 'Trophäe' : 'Trophäen'),
   kingOf: m => `König im ${m}`, yourProofs: 'Deine Beweise', proofsEmpty: 'Die Fotos und Videos, die du für Quests hochlädst, landen hier.',
   statusValid: 'Zählt', statusVoting: 'Abstimmung', statusRejected: 'Zählt nicht', trophyCase: 'Trophäenschrank',
-  settings: 'Einstellungen', language: 'Sprache', group: 'Gruppe'
+  settings: 'Einstellungen', language: 'Sprache', group: 'Gruppe',
+  createAccount: 'Konto erstellen', haveAccount: 'Ich habe schon ein Konto',
+  accountTitle: 'Dein Konto', accountSub: 'Mit einem Konto nutzt du dein Profil auf Handy, Tablet oder Computer und behältst Gruppen und Punkte.',
+  signupTitle: 'Erstell dein Konto', loginTitle: 'Willkommen zurück', loginSub: 'Melde dich mit Benutzername und Passwort an.',
+  nameLabel: 'Dein Name', nameHint: 'Diesen Namen sehen deine Freunde.',
+  usernameLabel: 'Benutzername', usernamePh: 'z. B. alex_meier', usernameHint: '3 bis 20 Zeichen: Kleinbuchstaben, Zahlen, Punkt oder Unterstrich.',
+  passwordLabel: 'Passwort', passwordHint: 'Mindestens 8 Zeichen. Es lässt sich noch nicht wiederherstellen, also schreib es dir auf.', show: 'Zeigen', hide: 'Verbergen',
+  signupBtn: 'Konto erstellen', signingUp: 'Konto wird erstellt…', loginBtn: 'Anmelden', loggingIn: 'Anmeldung…',
+  toLogin: 'Schon ein Konto? Anmelden', toSignup: 'Noch kein Konto? Erstell eins',
+  legacyTitle: 'Erstell dein Konto', legacySub: 'Side Friends nutzt jetzt Konten. Erstell eins: Deine Gruppe bleibt deine, mit allen Punkten, und du kannst dich auch auf anderen Geräten anmelden.',
+  groupSetupTitle: 'Tritt einer Gruppe bei', groupSetupSub: 'Erstell eine neue Gruppe oder tritt mit dem Code eines Freundes bei. Du kannst in mehreren Gruppen sein.',
+  yourGroups: 'Deine Gruppen', addGroup: 'Weitere Gruppe erstellen oder beitreten', active: 'Aktiv',
+  switchedTo: g => `Du bist jetzt in „${g}“.`, joinedToast: g => `Du bist „${g}“ beigetreten.`,
+  account: 'Konto', logOut: 'Abmelden', logOutWarn: 'Auf diesem Gerät musst du dich wieder mit Benutzername und Passwort anmelden. Deine Gruppen und Punkte bleiben deine.', loggedOut: 'Du hast dich abgemeldet.'
 };
 
 const DICTS: Record<Lang, Dict> = { it, en, es, fr, de };

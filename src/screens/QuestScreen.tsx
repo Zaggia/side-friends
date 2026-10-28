@@ -10,6 +10,7 @@ import { Icon } from '../components/Icon';
 import { LeaveSheet } from '../components/LeaveGroup';
 import { Sheet, useFx } from '../components/overlays';
 import { QuestSheet, ErrorLine } from '../components/QuestSheet';
+import { GroupSetup } from './Welcome';
 import { Avatar, AvatarStack, Button, Chip, PressCard, QuestIcon, SPRING, Section, Txt, tap } from '../components/ui';
 
 export const monthOf = (key: string, months: string[]) => months[Number(key.split('-')[1]) - 1];
@@ -95,6 +96,7 @@ export function QuestScreen({ topInset }: { topInset: number }) {
   const [open, setOpen] = useState<string | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [proposeOpen, setProposeOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   if (!state) return null;
@@ -166,7 +168,12 @@ export function QuestScreen({ topInset }: { topInset: number }) {
       </ScrollView>
 
       <QuestSheet quest={current} onClose={() => setOpen(null)} />
-      <GroupSheet open={groupOpen} onClose={() => setGroupOpen(false)} onLeave={() => { setGroupOpen(false); setTimeout(() => setLeaveOpen(true), 280); }} />
+      <GroupSheet open={groupOpen} onClose={() => setGroupOpen(false)}
+        onLeave={() => { setGroupOpen(false); setTimeout(() => setLeaveOpen(true), 280); }}
+        onAdd={() => { setGroupOpen(false); setTimeout(() => setAddOpen(true), 280); }} />
+      <Sheet open={addOpen} onClose={() => setAddOpen(false)}>
+        <GroupSetup compact onDone={() => { setAddOpen(false); }} />
+      </Sheet>
       <LeaveSheet open={leaveOpen} onClose={() => setLeaveOpen(false)} />
       <ProposeSheet open={proposeOpen} onClose={() => setProposeOpen(false)} onDone={() => { setProposeOpen(false); fx.toast(tr.proposedToast, 'plus'); }} />
     </>
@@ -190,12 +197,13 @@ function KingBanner({ state }: { state: GroupState }) {
   );
 }
 
-function GroupSheet({ open, onClose, onLeave }: { open: boolean; onClose: () => void; onLeave: () => void }) {
+function GroupSheet({ open, onClose, onLeave, onAdd }: { open: boolean; onClose: () => void; onLeave: () => void; onAdd: () => void }) {
   const t = useTheme();
   const { t: tr } = useI18n();
   const fx = useFx();
-  const { state } = useStore();
+  const { state, me, switchGroup } = useStore();
   if (!state) return null;
+  const others = (me?.groups ?? []).filter(g => g.id !== state.group.id);
   return (
     <Sheet open={open} onClose={onClose}>
       <Txt v="display" style={{ fontSize: 22, lineHeight: 28 }}>{state.group.name}</Txt>
@@ -216,6 +224,23 @@ function GroupSheet({ open, onClose, onLeave }: { open: boolean; onClose: () => 
             <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: fill(t, m.color) }} />
           </View>
         ))}
+      </View>
+      <View style={{ gap: 8 }}>
+        <Txt v="title">{tr.yourGroups}</Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, borderWidth: 2, borderColor: t.azzurro, backgroundColor: t.azzurroSoft }}>
+          <Icon name="users" size={20} color={t.azzurroText} />
+          <Txt v="heading" style={{ flex: 1, color: t.azzurroText }}>{state.group.name}</Txt>
+          <Chip label={tr.active} tone="active" icon="check" />
+        </View>
+        {others.map(g => (
+          <Pressable key={g.id} accessibilityRole="button" onPress={() => { tap(); onClose(); switchGroup(g.id); fx.toast(tr.switchedTo(g.name), 'users'); }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: radius.md, borderWidth: 2, borderBottomWidth: 4, borderColor: t.line }}>
+            <Icon name="users" size={20} color={t.ink} />
+            <Txt v="heading" style={{ flex: 1 }}>{g.name}</Txt>
+            <Txt v="caption" muted>{tr.peopleCount(g.members).split(' · ')[0]}</Txt>
+          </Pressable>
+        ))}
+        <Button kind="ghost" icon="plus" title={tr.addGroup} onPress={onAdd} />
       </View>
       <Button kind="ghost" title={tr.leaveGroup} onPress={onLeave} />
     </Sheet>

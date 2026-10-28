@@ -1,26 +1,33 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
-// The member's key ("group.member.secret") is the only login: kept in the phone's keychain,
-// or in localStorage on the web.
-const KEY = 'side-friends-auth';
-let cached: string | null | undefined;
+// What this device remembers: the account's session token ("s.…") and the group on screen.
+// Phones from before accounts may still hold an old "group.member.secret" key.
+const AUTH = 'side-friends-auth';
+const GROUP = 'side-friends-group';
+const cache: Record<string, string | null | undefined> = {};
 
-export async function getAuth(): Promise<string | null> {
-  if (cached !== undefined) return cached;
+async function read(key: string): Promise<string | null> {
+  if (cache[key] !== undefined) return cache[key]!;
   try {
-    cached = Platform.OS === 'web' ? globalThis.localStorage?.getItem(KEY) ?? null : await SecureStore.getItemAsync(KEY);
+    cache[key] = Platform.OS === 'web' ? globalThis.localStorage?.getItem(key) ?? null : await SecureStore.getItemAsync(key);
   } catch {
-    cached = null;
+    cache[key] = null;
   }
-  return cached;
+  return cache[key]!;
 }
-export async function setAuth(value: string | null) {
-  cached = value;
+async function write(key: string, value: string | null) {
+  cache[key] = value;
   try {
     if (Platform.OS === 'web') {
-      if (value) globalThis.localStorage?.setItem(KEY, value); else globalThis.localStorage?.removeItem(KEY);
-    } else if (value) await SecureStore.setItemAsync(KEY, value);
-    else await SecureStore.deleteItemAsync(KEY);
+      if (value) globalThis.localStorage?.setItem(key, value); else globalThis.localStorage?.removeItem(key);
+    } else if (value) await SecureStore.setItemAsync(key, value);
+    else await SecureStore.deleteItemAsync(key);
   } catch {}
 }
+
+export const getAuth = () => read(AUTH);
+export const setAuth = (v: string | null) => write(AUTH, v);
+export const getGroup = () => read(GROUP);
+export const setGroup = (v: string | null) => write(GROUP, v);
+export const isLegacyKey = (k: string | null) => !!k && !k.startsWith('s.') && k.split('.').length === 3;

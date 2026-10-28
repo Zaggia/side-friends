@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { getAuth } from './session';
+import { getAuth, getGroup } from './session';
 import { currentLang } from './i18n';
 
 // On the web the app is served by the same Netlify site as the API.
@@ -16,13 +16,15 @@ const NET_ERROR = {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public code?: string) { super(message); }
 }
 
-async function call<T>(method: string, path: string, body?: unknown, raw?: Blob): Promise<T> {
-  const auth = await getAuth();
-  const headers: Record<string, string> = { 'x-lang': currentLang() };
-  if (auth) headers.authorization = `Bearer ${auth}`;
+async function call<T>(method: string, path: string, body?: unknown, raw?: Blob, extra: Record<string, string> = {}): Promise<T> {
+  const [auth, group] = await Promise.all([getAuth(), getGroup()]);
+  const headers: Record<string, string> = { 'x-lang': currentLang(), ...extra };
+  if (auth && !('authorization' in extra)) headers.authorization = `Bearer ${auth}`;
+  if (headers.authorization === '') delete headers.authorization;
+  if (group) headers['x-group'] = group;
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (raw) headers['content-type'] = 'application/octet-stream';
   let res: Response;
@@ -32,7 +34,7 @@ async function call<T>(method: string, path: string, body?: unknown, raw?: Blob)
     throw new ApiError(0, NET_ERROR[currentLang()]);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data.error || NET_ERROR[currentLang()]);
+  if (!res.ok) throw new ApiError(res.status, data.error || NET_ERROR[currentLang()], data.code);
   return data as T;
 }
 
@@ -56,11 +58,19 @@ export type GroupState = {
   king: { memberId: string; month: string; pts: number; outing: Outing | null } | null;
   myProofs: { id: string; questTitle: string; type: 'image' | 'video'; status: 'pending' | 'approved' | 'rejected'; media: string; createdAt: string }[];
 };
-type Joined = { auth: string; groupId: string; memberId: string };
+export type Account = { id: string; username: string; name: string };
+export type MyGroup = { id: string; name: string; code: string; members: number; joinedAt: string };
+export type Me = { account: Account; groups: MyGroup[] };
 
 export const api = {
-  createGroup: (name: string, groupName: string) => call<Joined>('POST', 'groups', { name, groupName }),
-  join: (name: string, code: string) => call<Joined>('POST', 'join', { name, code }),
+  signup: (username: string, name: string, password: string, legacyKey?: string | null) =>
+    call<{ token: string; linkedGroup: string | null }>('POST', 'auth/signup', { username, name, password }, undefined,
+      legacyKey ? { 'x-legacy': legacyKey, authorization: '' } : { authorization: '' }),
+  login: (username: string, password: string) => call<{ token: string }>('POST', 'auth/login', { username, password }, undefined, { authorization: '' }),
+  logout: () => call('POST', 'auth/logout', {}),
+  me: () => call<Me>('GET', 'auth/me'),
+  createGroup: (groupName: string) => call<{ groupId: string }>('POST', 'groups', { groupName }),
+  join: (code: string) => call<{ groupId: string }>('POST', 'join', { code }),
   state: () => call<GroupState>('GET', 'state'),
   accept: (questId: string) => call('POST', 'accept', { questId }),
   vote: (proofId: string, v: 'yes' | 'no') => call('POST', 'votes', { proofId, v }),

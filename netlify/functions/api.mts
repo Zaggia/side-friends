@@ -1,27 +1,18 @@
 import type { Config, Context } from '@netlify/functions';
-import { getStore } from '@netlify/blobs';
 import { IDEAS, LIST, OUTING_KEYS, pickLang, questText, weekQuests, type Lang, type QuestDef } from '../../server/quests.ts';
-import { message, type MessageKey } from '../../server/messages.ts';
+import { message } from '../../server/messages.ts';
+import {
+  auth, authAccount, cleanName, data, fail, type Group, HttpError, json, type Link, listJSON, media, type Member, rid
+} from '../../server/core.ts';
 
-// Data lives in two Blobs stores. Every key is written by one person for one fact
-// (a member, a proof, a vote), so nothing is a shared counter: points, ranks and
-// winners are computed from proofs and votes on each read.
-//   data:  codes/{CODE} groups/{gid} members/{gid}/{mid} proofs/{gid}/{pid}
-//          votes/{gid}/{pid}/{mid} accepts/{gid}/{mid}/{qid}
-//          outings/{gid}/{month} proposals/{gid}/{id}
-//   media: {gid}/{pid}/{chunk}
+// The group API. Storage layout and sign-in live in server/core.ts; accounts in auth.mts.
 // Someone who leaves a group is removed from members/; everything they wrote stays,
 // but only current members' proofs and votes count.
-const data = () => getStore({ name: 'sf-data', consistency: 'strong' });
-const media = () => getStore({ name: 'sf-media', consistency: 'strong' });
-
 const CHUNK = 3 * 1024 * 1024; // keeps each request and response under the function payload limit
 const MAX_MEDIA = 60 * 1024 * 1024;
 const COLORS = ['azzurro', 'sole', 'fragola', 'menta', 'lilla'];
 const TZ = 'Europe/Rome';
 
-type Group = { id: string; name: string; code: string; createdAt: string };
-type Member = { id: string; name: string; joinedAt: string; tokenHash: string };
 type Proof = {
   id: string; memberId: string; questId: string; questTitle: string; pts: number; icon: string;
   week: string; month: string; type: 'image' | 'video'; mime: string; size: number; chunks: number;
@@ -31,20 +22,10 @@ type Vote = { v: 'yes' | 'no'; at: string };
 type Proposal = { id: string; memberId: string; title: string; pts: number; createdAt: string; month: string };
 type Outing = { memberId: string; k: string; v: string; at: string };
 
-class HttpError extends Error { constructor(public status: number, public key: MessageKey) { super(key); } }
-const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
-const fail = (status: number, key: MessageKey): never => { throw new HttpError(status, key); };
-
-const rid = (bytes = 16) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), b => b.toString(16).padStart(2, '0')).join('');
-async function sha256(s: string) {
-  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
-}
 function newCode() {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from(crypto.getRandomValues(new Uint8Array(6)), b => A[b % A.length]).join('');
 }
-const cleanName = (s: unknown, max = 24) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 
 /* ---------- dates in Italian time ---------- */
 function romeParts(d = new Date()) {
@@ -68,12 +49,6 @@ function monthInfo(d = new Date()) {
 }
 
 /* ---------- loading ---------- */
-async function listJSON<T>(prefix: string): Promise<T[]> {
-  const s = data();
-  const { blobs } = await s.list({ prefix });
-  const rows = (await Promise.all(blobs.map(b => s.get(b.key, { type: 'json' })))) as (T | null)[];
-  return rows.filter((r): r is T => r !== null);
-}
 async function listVotes(gid: string) {
   const s = data();
   const { blobs } = await s.list({ prefix: `votes/${gid}/` });
@@ -85,19 +60,6 @@ async function listVotes(gid: string) {
   }));
   return out;
 }
-async function auth(req: Request) {
-  const h = req.headers.get('authorization') || '';
-  const [gid, mid, token] = h.replace(/^Bearer\s+/i, '').split('.');
-  if (!gid || !mid || !token) fail(401, 'auth_missing');
-  const s = data();
-  const [group, member] = await Promise.all([
-    s.get(`groups/${gid}`, { type: 'json' }) as Promise<Group | null>,
-    s.get(`members/${gid}/${mid}`, { type: 'json' }) as Promise<Member | null>
-  ]);
-  if (!group || !member || member.tokenHash !== await sha256(token)) fail(401, 'auth_invalid');
-  return { group: group!, member: member! };
-}
-
 /* ---------- rules ---------- */
 // A proof needs at least half of the other members to say "vale", and more yes than no.
 // With nobody else in the group it counts straight away, so one person can try the app alone.
@@ -144,9 +106,9 @@ function titleFor(questId: string, lang: Lang, fallback: string) {
 
 /* ---------- routes ---------- */
 async function createGroup(req: Request) {
+  const { account } = await authAccount(req);
   const body = await req.json().catch(() => ({}));
-  const name = cleanName(body.name), groupName = cleanName(body.groupName, 32);
-  if (!name) fail(400, 'name_required');
+  const groupName = cleanName(body.groupName, 32);
   if (!groupName) fail(400, 'group_name_required');
   const s = data();
   const gid = rid(8);
@@ -158,27 +120,31 @@ async function createGroup(req: Request) {
   if (!code) fail(500, 'code_failed');
   const group: Group = { id: gid, name: groupName, code, createdAt: new Date().toISOString() };
   await s.setJSON(`groups/${gid}`, group);
-  return json(await addMember(group, name), 201);
+  await addMember(group, account.id, account.name);
+  return json({ groupId: gid }, 201);
 }
 async function joinGroup(req: Request) {
+  const { account } = await authAccount(req);
   const body = await req.json().catch(() => ({}));
-  const name = cleanName(body.name);
   const code = String(body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!name) fail(400, 'name_required');
   if (code.length !== 6) fail(400, 'code_length');
   const s = data();
   const gid = await s.get(`codes/${code}`);
   if (!gid) fail(404, 'code_unknown');
   const group = await s.get(`groups/${gid}`, { type: 'json' }) as Group;
   const members = await listJSON<Member>(`members/${gid}/`);
+  // Already in (from another device, say): nothing to add.
+  const link = await s.get(`accountGroups/${account.id}/${gid}`, { type: 'json' }) as Link | null;
+  if (link && members.some(m => m.id === link.memberId)) return json({ groupId: gid });
   if (members.length >= 20) fail(400, 'group_full');
-  return json(await addMember(group, name), 201);
+  await addMember(group, account.id, account.name);
+  return json({ groupId: gid }, 201);
 }
-async function addMember(group: Group, name: string) {
-  const mid = rid(8), token = rid(24);
-  const member: Member = { id: mid, name, joinedAt: new Date().toISOString(), tokenHash: await sha256(token) };
-  await data().setJSON(`members/${group.id}/${mid}`, member);
-  return { auth: `${group.id}.${mid}.${token}`, groupId: group.id, memberId: mid };
+async function addMember(group: Group, accountId: string, name: string) {
+  const s = data();
+  const member: Member = { id: rid(8), name, joinedAt: new Date().toISOString(), accountId };
+  await s.setJSON(`members/${group.id}/${member.id}`, member);
+  await s.setJSON(`accountGroups/${accountId}/${group.id}`, { memberId: member.id, joinedAt: member.joinedAt } satisfies Link);
 }
 
 async function state(req: Request, lang: Lang) {
@@ -404,13 +370,14 @@ async function propose(req: Request) {
   return json({ ok: true, id }, 201);
 }
 
-// Leaving deletes the member record and this phone's quest acceptances; the key stops working.
+// Leaving deletes the member record, its quest acceptances and the account's link to the group.
 async function leave(req: Request) {
-  const { group, member } = await auth(req);
+  const { group, member, account } = await auth(req);
   const s = data();
   const { blobs } = await s.list({ prefix: `accepts/${group.id}/${member.id}/` });
   await Promise.all(blobs.map(b => s.delete(b.key)));
   await s.delete(`members/${group.id}/${member.id}`);
+  if (account) await s.delete(`accountGroups/${account.id}/${group.id}`);
   return json({ ok: true });
 }
 
@@ -448,4 +415,4 @@ export default async (req: Request, _context: Context) => {
   }
 };
 
-export const config: Config = { path: '/api/*' };
+export const config: Config = { path: '/api/*', excludedPath: ['/api/auth/*'] };

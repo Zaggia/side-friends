@@ -7,8 +7,11 @@ L'app delle side quest per gruppi di amici. Ogni settimana escono 5 quest (3 dal
 - **App** (`App.tsx`, `src/`): React Native con Expo. Gira su iPhone, Android e browser con lo stesso codice.
   - `src/screens/`: le quattro schede (Quest, Vota, Classifica, Profilo) e il benvenuto.
   - `src/components/`: bottoni "da schiacciare", fogli a molla, coriandoli, icone e logo.
-  - `src/lib/`: colori del brand, chiamate al server, accesso salvato sul telefono.
-- **Server** (`netlify/functions/api.mts`): una funzione Netlify che risponde su `/api/*`. Salva tutto in Netlify Blobs.
+  - `src/lib/`: colori del brand, chiamate al server, account e gruppo salvati sul dispositivo.
+- **Server** (`netlify/functions/`): funzioni Netlify che salvano tutto in Netlify Blobs.
+  - `auth.mts` risponde su `/api/auth/*`: crea l'account, entra, esce, elenca i gruppi dell'account.
+  - `api.mts` risponde sul resto di `/api/*`: gruppi, quest, prove, voti, uscita del re.
+  - `server/core.ts` ha quello che usano entrambe: password, sessioni, chi sta chiamando e in che gruppo.
   - Ogni dato è scritto da una persona sola (un membro, una prova, un voto), quindi non esistono contatori da tenere allineati: punti, classifica e vincitore del mese si calcolano dai voti a ogni lettura.
   - Foto e video arrivano a pezzi da 3 MB e vengono serviti a pezzi, così i video fino a 60 MB passano nei limiti delle funzioni.
 - **Quest** (`server/quests.ts`): la lista del gruppo e le idee di riserva, in tutte le lingue. L'estrazione della settimana è la stessa per tutto il gruppo e non ripete le quest finché la lista non finisce.
@@ -16,7 +19,11 @@ L'app delle side quest per gruppi di amici. Ogni settimana escono 5 quest (3 dal
 
 ## Regole
 
-- Si entra con il proprio nome e il codice del gruppo (6 caratteri). Niente password: la chiave resta sul telefono.
+- Ognuno ha un account: nome utente (3-20 tra lettere minuscole, numeri, punto e trattino basso) e password (almeno 8 caratteri). Con lo stesso account si entra da qualsiasi telefono o computer e si ritrovano gli stessi gruppi.
+- Un account può stare in più gruppi: si crea un gruppo o si entra con il codice (6 caratteri), e si passa da uno all'altro dalla finestra del gruppo.
+- Le password non vengono salvate: il server tiene solo un hash PBKDF2 con sale. Dopo 10 tentativi sbagliati l'account resta bloccato 15 minuti, e ogni indirizzo può fare al massimo 30 richieste al minuto su `/api/auth/*`.
+- Chi aveva già un gruppo da prima degli account crea l'account sullo stesso telefono e si tiene gruppo, punti e prove.
+- Non c'è ancora il recupero della password (servirebbe un servizio di email).
 - Una prova vale quando almeno metà degli altri membri vota «vale» e i sì superano i no. Se sei da solo nel gruppo vale subito, così puoi provare l'app.
 - Si esce dal gruppo dal Profilo (Impostazioni) o dalla finestra del gruppo. Chi esce sparisce da classifica, voti e prove da votare; per rientrare serve di nuovo il codice e si riparte da zero.
 - La classifica riparte il primo del mese (ora italiana). Chi ha vinto il mese prima sceglie una cosa sola tra dove si mangia, cosa si fa o cosa si vede.

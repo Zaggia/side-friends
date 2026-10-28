@@ -12,7 +12,7 @@ import { font, radius, useTheme } from './src/lib/theme';
 import { FxProvider } from './src/components/overlays';
 import { Icon, Mark } from './src/components/Icon';
 import { Button, SPRING, Txt, tap } from './src/components/ui';
-import { Welcome } from './src/screens/Welcome';
+import { GroupSetupScreen, Welcome } from './src/screens/Welcome';
 import { QuestScreen } from './src/screens/QuestScreen';
 import { VoteScreen } from './src/screens/VoteScreen';
 import { RankScreen } from './src/screens/RankScreen';
@@ -51,25 +51,31 @@ function Splash() {
 }
 
 function Root() {
-  const { ready, signedIn, state, error, refresh, left } = useStore();
-  const { ready: langReady, chosen, lang, t: tr } = useI18n();
-  const t = useTheme();
+  const { ready, me, groupId, state, error, refresh, boot } = useStore();
+  const { ready: langReady, chosen, lang } = useI18n();
   // Quest titles come from the server in the chosen language: reload them when it changes.
-  useEffect(() => { if (signedIn) refresh(); }, [lang]);
-  if (!langReady || !ready || (signedIn && !state && !error)) return <Splash />;
+  useEffect(() => { if (groupId) refresh(); }, [lang]);
+  if (!langReady || !ready) return <Splash />;
   if (!chosen) return <LanguageScreen />;
-  if (!signedIn) return <Welcome skipIntro={left} />;
-  if (!state) {
-    return (
-      <View style={{ flex: 1, backgroundColor: t.ground, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 }}>
-        <Mark size={80} colors={[t.azzurro, t.sole, t.fragola]} />
-        <Txt v="title" style={{ textAlign: 'center' }}>{tr.loadFail}</Txt>
-        <Txt muted style={{ textAlign: 'center' }}>{error}</Txt>
-        <Button title={tr.retry} icon="refresh" onPress={refresh} />
-      </View>
-    );
-  }
-  return <Main />;
+  if (!me && error) return <LoadError text={error} onRetry={boot} />;
+  if (!me) return <Welcome />;
+  if (!groupId) return <GroupSetupScreen />;
+  if (!state && !error) return <Splash />;
+  if (!state) return <LoadError text={error} onRetry={refresh} />;
+  return <Main key={groupId} />;
+}
+
+function LoadError({ text, onRetry }: { text: string | null; onRetry: () => void }) {
+  const t = useTheme();
+  const { t: tr } = useI18n();
+  return (
+    <View style={{ flex: 1, backgroundColor: t.ground, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 }}>
+      <Mark size={80} colors={[t.azzurro, t.sole, t.fragola]} />
+      <Txt v="title" style={{ textAlign: 'center' }}>{tr.loadFail}</Txt>
+      <Txt muted style={{ textAlign: 'center' }}>{text}</Txt>
+      <Button title={tr.retry} icon="refresh" onPress={onRetry} />
+    </View>
+  );
 }
 
 function Main() {

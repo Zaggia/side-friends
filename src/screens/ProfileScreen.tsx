@@ -9,6 +9,8 @@ import { Icon } from '../components/Icon';
 import { LanguageSheet } from '../components/Language';
 import { LeaveSheet } from '../components/LeaveGroup';
 import { ProofMedia } from '../components/Media';
+import { Sheet, useFx } from '../components/overlays';
+import { Button } from '../components/ui';
 import { Avatar, Chip, Section, Txt, tap } from '../components/ui';
 import { monthOf } from './QuestScreen';
 
@@ -31,7 +33,9 @@ function SettingRow({ icon, label, value, danger, onPress }: { icon: string; lab
 export function ProfileScreen({ topInset }: { topInset: number }) {
   const t = useTheme();
   const { t: tr, lang } = useI18n();
-  const { state } = useStore();
+  const { state, me: account, logOut } = useStore();
+  const fx = useFx();
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const [open, setOpen] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [langOpen, setLangOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -91,11 +95,28 @@ export function ProfileScreen({ topInset }: { topInset: number }) {
 
       <Section title={tr.settings}>
         <View style={{ borderRadius: radius.md, backgroundColor: t.nuvola, overflow: 'hidden' }}>
+          <SettingRow icon="user" label={tr.account} value={account ? `@${account.account.username}` : undefined} onPress={() => setLogoutOpen(true)} />
+          <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
           <SettingRow icon="chat" label={tr.language} value={LANGS.find(l => l.code === lang)?.name} onPress={() => setLangOpen(true)} />
           <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
           <SettingRow icon="x" label={tr.leaveGroup} value={state.group.name} danger onPress={() => setLeaveOpen(true)} />
+          <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
+          <SettingRow icon="share" label={tr.logOut} onPress={() => setLogoutOpen(true)} />
         </View>
       </Section>
+
+      <Sheet open={logoutOpen} onClose={() => setLogoutOpen(false)}>
+        <View style={{ alignItems: 'center', gap: 10 }}>
+          <Avatar name={me.name} color={me.color} size={64} />
+          <Txt v="display" style={{ fontSize: 22, lineHeight: 28 }}>{account?.account.name ?? me.name}</Txt>
+          <Txt muted>{account ? `@${account.account.username}` : ''}</Txt>
+        </View>
+        <View style={{ backgroundColor: t.nuvola, borderRadius: radius.md, padding: 14 }}>
+          <Txt muted>{tr.logOutWarn}</Txt>
+        </View>
+        <Button kind="danger" title={tr.logOut} onPress={async () => { setLogoutOpen(false); await logOut(); fx.toast(tr.loggedOut, 'user'); }} />
+        <Button kind="ghost" title={tr.stay} onPress={() => setLogoutOpen(false)} />
+      </Sheet>
 
       <LanguageSheet open={langOpen} onClose={() => setLangOpen(false)} />
       <LeaveSheet open={leaveOpen} onClose={() => setLeaveOpen(false)} />

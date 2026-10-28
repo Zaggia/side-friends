@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Dimensions, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent, Platform, ScrollView, type ScrollViewInstance, TextInput, View } from 'react-native';
+import { Dimensions, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, type ScrollViewInstance, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { useStore } from '../lib/store';
 import { font, radius, useTheme } from '../lib/theme';
@@ -16,17 +15,47 @@ function Pop({ children, delay = 0 }: { children: React.ReactNode; delay?: numbe
   return <Animated.View style={style}>{children}</Animated.View>;
 }
 
-// After leaving a group the intro is skipped: straight to the name, to create or join another one.
-export function Welcome({ skipIntro = false }: { skipIntro?: boolean }) {
+export function Field({ label, hint, secure, ...props }: React.ComponentProps<typeof TextInput> & { label: string; hint?: string; secure?: boolean }) {
+  const t = useTheme();
+  const { t: tr } = useI18n();
+  const [shown, setShown] = useState(false);
+  return (
+    <View style={{ gap: 6 }}>
+      <Txt v="heading" style={{ fontSize: 15 }}>{label}</Txt>
+      <View>
+        <TextInput placeholderTextColor={t.inkMuted} secureTextEntry={secure && !shown} {...props}
+          style={{ fontFamily: font.semibold, fontSize: 17, color: t.ink, backgroundColor: t.nuvola, borderWidth: 2, borderColor: t.line, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 14, paddingRight: secure ? 96 : 16 }} />
+        {secure ? (
+          <Pressable onPress={() => setShown(s => !s)} accessibilityRole="button" style={{ position: 'absolute', right: 8, top: 0, bottom: 0, justifyContent: 'center', paddingHorizontal: 10 }}>
+            <Txt style={{ fontFamily: font.black, fontSize: 14, color: t.azzurroText }}>{shown ? tr.hide : tr.show}</Txt>
+          </Pressable>
+        ) : null}
+      </View>
+      {hint ? <Txt v="caption" muted>{hint}</Txt> : null}
+    </View>
+  );
+}
+
+export function ErrorBox({ text }: { text: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: t.fragolaSoft, padding: 12, borderRadius: radius.md }}>
+      <Icon name="x" size={18} color={t.fragolaText} /><Txt style={{ flex: 1, color: t.fragolaText }}>{text}</Txt>
+    </View>
+  );
+}
+
+// Intro, then an account: sign up or sign in. A phone with an old one-phone key goes straight to sign-up.
+export function Welcome() {
   const t = useTheme();
   const { t: tr } = useI18n();
   const insets = useSafeAreaInsets();
-  const { signIn } = useStore();
-  const [step, setStep] = useState<'intro' | 'name' | 'create' | 'join'>(skipIntro ? 'name' : 'intro');
+  const { signUp, logIn, legacy } = useStore();
+  const [step, setStep] = useState<'intro' | 'choose' | 'signup' | 'login'>(legacy ? 'signup' : 'intro');
   const [page, setPage] = useState(0);
   const [name, setName] = useState('');
-  const [groupName, setGroupName] = useState('');
-  const [code, setCode] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const scroller = useRef<ScrollViewInstance>(null);
@@ -39,24 +68,22 @@ export function Welcome({ skipIntro = false }: { skipIntro?: boolean }) {
   };
   const next = () => {
     if (page < slides.length - 1) { scroller.current?.scrollTo({ x: (page + 1) * W, animated: true }); setPage(page + 1); }
-    else setStep('name');
+    else setStep('choose');
   };
+  const go = (s: typeof step) => { setError(''); setStep(s); };
   const submit = async () => {
     setError(''); setBusy(true);
     try {
-      const res = step === 'create' ? await api.createGroup(name, groupName) : await api.join(name, code);
+      if (step === 'signup') await signUp(username, name, password);
+      else await logIn(username, password);
       tap('success');
-      await signIn(res.auth);
     } catch (e) {
       setError(e instanceof Error ? e.message : tr.genericError);
       tap('warning');
-    } finally { setBusy(false); }
+      setBusy(false);
+    }
   };
-
-  const input = (props: React.ComponentProps<typeof TextInput>) => (
-    <TextInput placeholderTextColor={t.inkMuted} {...props}
-      style={{ fontFamily: font.semibold, fontSize: 18, color: t.ink, backgroundColor: t.nuvola, borderWidth: 2, borderColor: t.line, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 14 }} />
-  );
+  const cleanUser = (s: string) => s.toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 20);
 
   if (step === 'intro') {
     return (
@@ -88,38 +115,109 @@ export function Welcome({ skipIntro = false }: { skipIntro?: boolean }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.ground }}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 16, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, gap: 20, maxWidth: 520, width: '100%', alignSelf: 'center' }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 16, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, gap: 18, maxWidth: 520, width: '100%', alignSelf: 'center' }}>
         <View style={{ alignItems: 'center' }}><Mark size={72} colors={[t.azzurro, t.sole, t.fragola]} /></View>
-        {step === 'name' ? (
+        {step === 'choose' ? (
           <>
-            <Txt v="display" style={{ textAlign: 'center' }}>{tr.nameTitle}</Txt>
-            <Txt muted style={{ textAlign: 'center' }}>{tr.nameSub}</Txt>
-            {input({ value: name, onChangeText: setName, placeholder: tr.namePh, autoFocus: true, maxLength: 24, autoCapitalize: 'words', returnKeyType: 'next' })}
-            <Button title={tr.createGroup} icon="plus" disabled={!name.trim()} onPress={() => { setError(''); setStep('create'); }} />
-            <Button title={tr.joinWithCode} kind="ghost" disabled={!name.trim()} onPress={() => { setError(''); setStep('join'); }} />
+            <Txt v="display" style={{ textAlign: 'center' }}>{tr.accountTitle}</Txt>
+            <Txt muted style={{ textAlign: 'center' }}>{tr.accountSub}</Txt>
+            <Button title={tr.createAccount} icon="plus" onPress={() => go('signup')} />
+            <Button title={tr.haveAccount} kind="ghost" onPress={() => go('login')} />
           </>
-        ) : step === 'create' ? (
+        ) : step === 'signup' ? (
           <>
-            <Txt v="display" style={{ textAlign: 'center' }}>{tr.newGroup}</Txt>
-            <Txt muted style={{ textAlign: 'center' }}>{tr.newGroupSub}</Txt>
-            {input({ value: groupName, onChangeText: setGroupName, placeholder: tr.groupPh, autoFocus: true, maxLength: 32, onSubmitEditing: submit })}
-            <Button title={busy ? tr.creating : tr.createIt} disabled={busy || !groupName.trim()} onPress={submit} />
-            <Button title={tr.back} kind="ghost" onPress={() => setStep('name')} />
+            <Txt v="display" style={{ textAlign: 'center' }}>{legacy ? tr.legacyTitle : tr.signupTitle}</Txt>
+            {legacy ? <Txt muted style={{ textAlign: 'center' }}>{tr.legacySub}</Txt> : null}
+            <Field label={tr.nameLabel} hint={tr.nameHint} value={name} onChangeText={setName} placeholder={tr.namePh} maxLength={24} autoCapitalize="words" autoComplete="name" textContentType="givenName" />
+            <Field label={tr.usernameLabel} hint={tr.usernameHint} value={username} onChangeText={s => setUsername(cleanUser(s))} placeholder={tr.usernamePh} autoCapitalize="none" autoCorrect={false} autoComplete="username-new" textContentType="username" />
+            <Field label={tr.passwordLabel} hint={tr.passwordHint} value={password} onChangeText={setPassword} secure autoCapitalize="none" autoCorrect={false} autoComplete="password-new" textContentType="newPassword" onSubmitEditing={submit} />
+            {error ? <ErrorBox text={error} /> : null}
+            <Button title={busy ? tr.signingUp : tr.signupBtn} disabled={busy || !name.trim() || username.length < 3 || password.length < 8} onPress={submit} />
+            <Button title={tr.toLogin} kind="ghost" disabled={busy} onPress={() => go('login')} />
           </>
         ) : (
           <>
-            <Txt v="display" style={{ textAlign: 'center' }}>{tr.joinTitle}</Txt>
-            <Txt muted style={{ textAlign: 'center' }}>{tr.joinSub}</Txt>
-            {input({ value: code, onChangeText: s => setCode(s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)), placeholder: 'ABC123', autoFocus: true, autoCapitalize: 'characters', autoCorrect: false, onSubmitEditing: submit })}
-            <Button title={busy ? tr.joining : tr.join} disabled={busy || code.length !== 6} onPress={submit} />
-            <Button title={tr.back} kind="ghost" onPress={() => setStep('name')} />
+            <Txt v="display" style={{ textAlign: 'center' }}>{tr.loginTitle}</Txt>
+            <Txt muted style={{ textAlign: 'center' }}>{tr.loginSub}</Txt>
+            <Field label={tr.usernameLabel} value={username} onChangeText={s => setUsername(cleanUser(s))} placeholder={tr.usernamePh} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" />
+            <Field label={tr.passwordLabel} value={password} onChangeText={setPassword} secure autoCapitalize="none" autoCorrect={false} autoComplete="password" textContentType="password" onSubmitEditing={submit} />
+            {error ? <ErrorBox text={error} /> : null}
+            <Button title={busy ? tr.loggingIn : tr.loginBtn} disabled={busy || !username || !password} onPress={submit} />
+            <Button title={tr.toSignup} kind="ghost" disabled={busy} onPress={() => go('signup')} />
           </>
         )}
-        {error ? (
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: t.fragolaSoft, padding: 12, borderRadius: radius.md }}>
-            <Icon name="x" size={18} color={t.fragolaText} /><Txt style={{ flex: 1, color: t.fragolaText }}>{error}</Txt>
-          </View>
-        ) : null}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// Create a group or join one with a code. Used after signing up and from the group switcher.
+export function GroupSetup({ onDone, compact }: { onDone?: (name: string, created: boolean) => void; compact?: boolean }) {
+  const t = useTheme();
+  const { t: tr } = useI18n();
+  const { createGroup, joinGroup, me } = useStore();
+  const [mode, setMode] = useState<'pick' | 'create' | 'join'>('pick');
+  const [groupName, setGroupName] = useState('');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setError(''); setBusy(true);
+    try {
+      if (mode === 'create') { await createGroup(groupName); onDone?.(groupName.trim(), true); }
+      else { await joinGroup(code); onDone?.(code, false); }
+      tap('success');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : tr.genericError);
+      tap('warning');
+    } finally { setBusy(false); }
+  };
+  return (
+    <View style={{ gap: 18 }}>
+      {!compact ? <View style={{ alignItems: 'center' }}><Mark size={72} colors={[t.azzurro, t.sole, t.fragola]} /></View> : null}
+      {mode === 'pick' ? (
+        <>
+          <Txt v="display" style={{ textAlign: compact ? 'left' : 'center', fontSize: compact ? 22 : 30, lineHeight: compact ? 28 : 34 }}>{compact ? tr.addGroup : tr.groupSetupTitle}</Txt>
+          <Txt muted style={{ textAlign: compact ? 'left' : 'center' }}>{me && !compact ? `@${me.account.username} · ` : ''}{tr.groupSetupSub}</Txt>
+          <Button title={tr.createGroup} icon="plus" onPress={() => setMode('create')} />
+          <Button title={tr.joinWithCode} kind="ghost" onPress={() => setMode('join')} />
+        </>
+      ) : mode === 'create' ? (
+        <>
+          <Txt v="display" style={{ textAlign: compact ? 'left' : 'center', fontSize: compact ? 22 : 30, lineHeight: compact ? 28 : 34 }}>{tr.newGroup}</Txt>
+          <Txt muted style={{ textAlign: compact ? 'left' : 'center' }}>{tr.newGroupSub}</Txt>
+          <Field label={tr.newGroup} value={groupName} onChangeText={setGroupName} placeholder={tr.groupPh} maxLength={32} onSubmitEditing={submit} />
+          {error ? <ErrorBox text={error} /> : null}
+          <Button title={busy ? tr.creating : tr.createIt} disabled={busy || !groupName.trim()} onPress={submit} />
+          <Button title={tr.back} kind="ghost" onPress={() => { setError(''); setMode('pick'); }} />
+        </>
+      ) : (
+        <>
+          <Txt v="display" style={{ textAlign: compact ? 'left' : 'center', fontSize: compact ? 22 : 30, lineHeight: compact ? 28 : 34 }}>{tr.joinTitle}</Txt>
+          <Txt muted style={{ textAlign: compact ? 'left' : 'center' }}>{tr.joinSub}</Txt>
+          <Field label={tr.inviteCode} value={code} onChangeText={s => setCode(s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))} placeholder="ABC123" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={submit} />
+          {error ? <ErrorBox text={error} /> : null}
+          <Button title={busy ? tr.joining : tr.join} disabled={busy || code.length !== 6} onPress={submit} />
+          <Button title={tr.back} kind="ghost" onPress={() => { setError(''); setMode('pick'); }} />
+        </>
+      )}
+    </View>
+  );
+}
+
+// Full screen for an account with no group yet.
+export function GroupSetupScreen() {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const { t: tr } = useI18n();
+  const { logOut } = useStore();
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.ground }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 16, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, gap: 18, maxWidth: 520, width: '100%', alignSelf: 'center' }}>
+        <GroupSetup />
+        <Pressable onPress={() => { tap(); logOut(); }} accessibilityRole="button" style={{ alignSelf: 'center', padding: 10 }}>
+          <Txt style={{ fontFamily: font.bold, color: t.inkMuted }}>{tr.logOut}</Txt>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
