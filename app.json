@@ -1,25 +1,49 @@
 {
   "expo": {
-    "name": "side-friends",
+    "name": "Side Friends",
     "slug": "side-friends",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sidefriends.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Per scattare foto e registrare video come prova delle quest.",
+        "NSMicrophoneUsageDescription": "Per registrare l’audio dei video delle quest.",
+        "NSPhotoLibraryUsageDescription": "Per scegliere foto e video dalla galleria come prova delle quest."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0E1B33",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.sidefriends.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "name": "Side Friends",
+      "themeColor": "#2E9BF0"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Per scegliere foto e video dalla galleria come prova delle quest.",
+          "cameraPermission": "Per scattare foto e registrare video come prova delle quest.",
+          "microphonePermission": "Per registrare l’audio dei video delle quest."
+        }
+      ],
+      "expo-video",
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "scheme": "sidefriends"
   }
 }

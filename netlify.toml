@@ -1,0 +1,13 @@
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# The web app is a single page: every path that isn't a file or the API serves it.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
