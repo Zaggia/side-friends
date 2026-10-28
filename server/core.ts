@@ -8,7 +8,9 @@ import type { MessageKey } from './messages.ts';
 //          loginFails/{name}
 //          codes/{CODE} groups/{gid} members/{gid}/{mid} proofs/{gid}/{pid}
 //          votes/{gid}/{pid}/{mid} accepts/{gid}/{mid}/{qid}
-//          outings/{gid}/{month} proposals/{gid}/{id}
+//          proposals/{gid}/{id}
+//          outings|themes|specials|vetoes/{gid}/{month}   (the king's powers, one each per month)
+//          push/{aid}/{deviceId} config/vapid sent/{gid}/{what}   (notifications)
 //   media: {gid}/{pid}/{chunk}
 export const data = () => getStore({ name: 'sf-data', consistency: 'strong' });
 export const media = () => getStore({ name: 'sf-media', consistency: 'strong' });

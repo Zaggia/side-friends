@@ -4,7 +4,9 @@ import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withDelay, with
 import * as Clipboard from 'expo-clipboard';
 import { api, FeedItem, GroupState, Quest } from '../lib/api';
 import { fmtNum, useI18n } from '../lib/i18n';
-import { useStore } from '../lib/store';
+import { PushError, type PushProblem, useStore } from '../lib/store';
+import { pushSupport } from '../lib/push';
+import { getNudged, setNudged } from '../lib/session';
 import { fill, font, radius, useTheme } from '../lib/theme';
 import { Icon } from '../components/Icon';
 import { LeaveSheet } from '../components/LeaveGroup';
@@ -19,7 +21,7 @@ export const prevMonthKey = (key: string) => { const [y, m] = key.split('-').map
 export function QuestCard({ q, onPress }: { q: Quest; onPress: () => void }) {
   const t = useTheme();
   const { t: tr } = useI18n();
-  const color = q.kind === 'idea' ? 'lilla' : q.kind === 'group' ? 'menta' : ['azzurro', 'fragola', 'sole'][q.id.length % 3];
+  const color = q.kind === 'idea' ? 'lilla' : q.kind === 'group' ? 'menta' : q.kind === 'special' ? 'sole' : ['azzurro', 'fragola', 'sole'][q.id.length % 3];
   const chip = q.state === 'done' ? <Chip label={tr.chipDone} tone="done" icon="check" />
     : q.state === 'pending' ? <Chip label={tr.chipPending} tone="pending" />
     : q.state === 'active' ? <Chip label={tr.chipActive} tone="active" /> : <Chip label={tr.chipNew} />;
@@ -74,10 +76,15 @@ function MonthCard() {
   );
 }
 
-function feedLine(f: FeedItem, me: boolean, tr: ReturnType<typeof useI18n>['t']) {
+// `to` is the other person in the event, or null when it's the reader.
+function feedLine(f: FeedItem, me: boolean, to: string | null, tr: ReturnType<typeof useI18n>['t']) {
   if (f.kind === 'proof') return tr.feed.proof(me, f.media === 'video', f.quest ?? '');
   if (f.kind === 'done') return tr.feed.done(me, f.quest ?? '', f.pts ?? 0);
   if (f.kind === 'proposal') return tr.feed.proposal(me, f.quest ?? '');
+  if (f.kind === 'theme') return tr.feed2.theme(me, f.text ?? '');
+  if (f.kind === 'special') return tr.feed2.special(me, to);
+  if (f.kind === 'veto') return tr.feed2.veto(me, to, f.status === 'approved');
+  if (f.kind === 'outing') return tr.feed2.outing(me, tr.outing[f.k ?? '']?.label ?? tr.choiceLabel, f.text ?? '');
   return tr.feed.join(me);
 }
 function ago(iso: string, tr: ReturnType<typeof useI18n>['t']) {
@@ -104,6 +111,8 @@ export function QuestScreen({ topInset }: { topInset: number }) {
   const list = state.quests.filter(q => q.kind === 'list');
   const ideas = state.quests.filter(q => q.kind === 'idea');
   const group = state.quests.filter(q => q.kind === 'group');
+  const special = state.quests.find(q => q.kind === 'special');
+  const specialBy = special ? state.members.find(m => m.id === special.by) : null;
   const week = [...list, ...ideas];
   const current = state.quests.find(q => q.id === open) ?? null;
 
@@ -127,6 +136,17 @@ export function QuestScreen({ topInset }: { topInset: number }) {
         <Animated.View entering={FadeInDown.springify().damping(18)}><MonthCard /></Animated.View>
 
         {state.king ? <KingBanner state={state} /> : null}
+
+        <PushNudge />
+
+        {special ? (
+          <Animated.View entering={FadeInDown.delay(30).springify().damping(18)}>
+            <Section title={tr.specialSection}>
+              <Txt v="caption" muted style={{ marginTop: -6 }}>{tr.specialFrom(specialBy?.name ?? tr.someone)}</Txt>
+              <QuestCard q={special} onPress={() => setOpen(special.id)} />
+            </Section>
+          </Animated.View>
+        ) : null}
 
         <Animated.View entering={FadeInDown.delay(60).springify().damping(18)}>
           <Section title={tr.thisWeek} right={<Txt v="caption" muted>{tr.doneOf(week.filter(q => q.state === 'done').length, week.length)}</Txt>}>
@@ -153,11 +173,12 @@ export function QuestScreen({ topInset }: { topInset: number }) {
             {state.feed.map((f, i) => {
               const m = state.members.find(x => x.id === f.who);
               const mine = f.who === state.me;
+              const to = f.to === state.me ? null : state.members.find(x => x.id === f.to)?.name ?? tr.someone;
               return (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: i < state.feed.length - 1 ? 1 : 0, borderColor: t.line }}>
                   <Avatar name={m?.name ?? '?'} color={m?.color ?? 'azzurro'} size={36} />
                   <Txt style={{ flex: 1, fontSize: 15, lineHeight: 20 }}>
-                    <Txt style={{ fontFamily: font.bold, fontSize: 15 }}>{mine ? tr.you : m?.name ?? tr.someone}</Txt> {feedLine(f, mine, tr)}
+                    <Txt style={{ fontFamily: font.bold, fontSize: 15 }}>{mine ? tr.you : m?.name ?? tr.someone}</Txt> {feedLine(f, mine, to, tr)}
                   </Txt>
                   <Txt v="caption" muted>{ago(f.at, tr)}</Txt>
                 </View>
@@ -192,9 +213,61 @@ function KingBanner({ state }: { state: GroupState }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Icon name="crown" size={16} color={t.sole} /><Txt v="label" color={t.soleText}>{tr.wonMonth(me, king?.name ?? '', monthOf(k.month, tr.months))}</Txt>
       </View>
+      {k.theme ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: t.sole, alignItems: 'center', justifyContent: 'center' }}><Icon name="palette" size={18} color={t.onColor} /></View>
+          <View style={{ flex: 1 }}>
+            <Txt v="caption" muted>{tr.themeOf(monthOf(state.month.key, tr.months))}</Txt>
+            <Txt v="title">{k.theme.text}</Txt>
+          </View>
+        </View>
+      ) : null}
       <Txt v="heading">{k.outing ? `${opt?.label ?? ''}: ${k.outing.v}` : me ? tr.chooseFromRank : tr.isChoosing(king?.name ?? '')}</Txt>
     </View>
   );
+}
+
+// Asks once to turn on notifications, where the device can get them.
+function PushNudge() {
+  const t = useTheme();
+  const { t: tr } = useI18n();
+  const fx = useFx();
+  const { pushOn, enablePush } = useStore();
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    (async () => { if (!pushOn && !(await getNudged()) && (await pushSupport()) === 'ok' && live) setShow(true); })();
+    return () => { live = false; };
+  }, [pushOn]);
+  if (!show || pushOn) return null;
+  const turnOn = async () => {
+    setError(''); setBusy(true);
+    try { await enablePush(); fx.toast(tr.notifEnabled, 'bell'); setShow(false); }
+    catch (e) { setError(e instanceof PushError ? pushMessage(e.reason, tr) : e instanceof Error ? e.message : tr.genericError); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Animated.View entering={FadeInDown.springify().damping(18)} style={{ backgroundColor: t.azzurroSoft, borderRadius: radius.md, padding: 16, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.azzurro, alignItems: 'center', justifyContent: 'center' }}><Icon name="bell" size={20} color={t.onColor} /></View>
+        <View style={{ flex: 1 }}>
+          <Txt v="heading">{tr.nudgeTitle}</Txt>
+          <Txt v="caption" muted>{tr.nudgeSub}</Txt>
+        </View>
+      </View>
+      {error ? <ErrorLine text={error} /> : null}
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Button style={{ flex: 1 }} kind="ghost" title={tr.later} onPress={async () => { await setNudged(); setShow(false); }} />
+        <Button style={{ flex: 1 }} icon="bell" title={busy ? tr.wait : tr.nudgeBtn} disabled={busy} onPress={turnOn} />
+      </View>
+    </Animated.View>
+  );
+}
+
+export function pushMessage(reason: PushProblem, tr: ReturnType<typeof useI18n>['t']) {
+  return reason === 'ios-home' ? tr.pushIosHome : reason === 'denied' ? tr.pushDenied : reason === 'failed' ? tr.pushFailed : tr.pushUnsupported;
 }
 
 function GroupSheet({ open, onClose, onLeave, onAdd }: { open: boolean; onClose: () => void; onLeave: () => void; onAdd: () => void }) {

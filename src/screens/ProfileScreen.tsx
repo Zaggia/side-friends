@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { mediaUrl } from '../lib/api';
 import { fmtNum, LANGS, useI18n } from '../lib/i18n';
-import { useStore } from '../lib/store';
+import { PushError, useStore } from '../lib/store';
 import { font, radius, useTheme } from '../lib/theme';
 import { Icon } from '../components/Icon';
 import { LanguageSheet } from '../components/Language';
@@ -12,7 +12,8 @@ import { ProofMedia } from '../components/Media';
 import { Sheet, useFx } from '../components/overlays';
 import { Button } from '../components/ui';
 import { Avatar, Chip, Section, Txt, tap } from '../components/ui';
-import { monthOf } from './QuestScreen';
+import { ErrorLine } from '../components/QuestSheet';
+import { monthOf, pushMessage } from './QuestScreen';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -33,12 +34,13 @@ function SettingRow({ icon, label, value, danger, onPress }: { icon: string; lab
 export function ProfileScreen({ topInset }: { topInset: number }) {
   const t = useTheme();
   const { t: tr, lang } = useI18n();
-  const { state, me: account, logOut } = useStore();
+  const { state, me: account, logOut, pushOn } = useStore();
   const fx = useFx();
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [open, setOpen] = useState<{ uri: string; type: 'image' | 'video' } | null>(null);
   const [langOpen, setLangOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   if (!state) return null;
   const me = state.members.find(m => m.id === state.me)!;
   const approved = state.myProofs.filter(p => p.status === 'approved').length;
@@ -71,6 +73,7 @@ export function ProfileScreen({ topInset }: { topInset: number }) {
                 <View style={{ position: 'absolute', left: 6, bottom: 6 }}>
                   <Chip label={p.status === 'approved' ? tr.statusValid : p.status === 'pending' ? tr.statusVoting : tr.statusRejected} tone={p.status === 'approved' ? 'done' : p.status === 'pending' ? 'active' : 'pending'} />
                 </View>
+                {p.vetoed ? <View style={{ position: 'absolute', left: 6, top: 6, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 24, borderRadius: 12, backgroundColor: t.sole }}><Icon name="crown" size={12} color={t.onColor} /><Txt style={{ fontFamily: font.black, fontSize: 11, color: t.onColor }}>{tr.vetoChip}</Txt></View> : null}
                 {p.type === 'video' ? <View style={{ position: 'absolute', right: 6, top: 6, width: 24, height: 24, borderRadius: 12, backgroundColor: t.ground, alignItems: 'center', justifyContent: 'center' }}><Icon name="play" size={12} color={t.ink} /></View> : null}
               </Pressable>
             ))}
@@ -99,6 +102,8 @@ export function ProfileScreen({ topInset }: { topInset: number }) {
           <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
           <SettingRow icon="chat" label={tr.language} value={LANGS.find(l => l.code === lang)?.name} onPress={() => setLangOpen(true)} />
           <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
+          <SettingRow icon="bell" label={tr.notifications} value={pushOn ? tr.notifOn : tr.notifOff} onPress={() => setNotifOpen(true)} />
+          <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
           <SettingRow icon="x" label={tr.leaveGroup} value={state.group.name} danger onPress={() => setLeaveOpen(true)} />
           <View style={{ height: 1, backgroundColor: t.line, marginLeft: 62 }} />
           <SettingRow icon="share" label={tr.logOut} onPress={() => setLogoutOpen(true)} />
@@ -119,6 +124,7 @@ export function ProfileScreen({ topInset }: { topInset: number }) {
       </Sheet>
 
       <LanguageSheet open={langOpen} onClose={() => setLangOpen(false)} />
+      <NotifySheet open={notifOpen} onClose={() => setNotifOpen(false)} />
       <LeaveSheet open={leaveOpen} onClose={() => setLeaveOpen(false)} />
 
       <Modal visible={!!open} animationType="fade" onRequestClose={() => setOpen(null)}>
@@ -130,5 +136,39 @@ export function ProfileScreen({ topInset }: { topInset: number }) {
         </View>
       </Modal>
     </ScrollView>
+  );
+}
+
+function NotifySheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useTheme();
+  const { t: tr } = useI18n();
+  const fx = useFx();
+  const { pushOn, enablePush, disablePush } = useStore();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => {
+    setBusy(true); setError('');
+    try {
+      if (pushOn) { await disablePush(); fx.toast(tr.notifDisabled, 'bell'); }
+      else { await enablePush(); fx.toast(tr.notifEnabled, 'bell'); tap('success'); }
+      onClose();
+    } catch (e) {
+      setError(e instanceof PushError ? pushMessage(e.reason, tr) : e instanceof Error ? e.message : tr.genericError);
+    } finally { setBusy(false); }
+  };
+  return (
+    <Sheet open={open} onClose={() => { setError(''); onClose(); }}>
+      <View style={{ alignItems: 'center', gap: 10 }}>
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: pushOn ? t.azzurro : t.nuvola, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="bell" size={30} color={pushOn ? t.onColor : t.inkMuted} />
+        </View>
+        <Txt v="display" style={{ fontSize: 22, lineHeight: 28 }}>{tr.notifications}</Txt>
+        <Chip label={pushOn ? tr.notifOn : tr.notifOff} tone={pushOn ? 'done' : 'neutral'} />
+      </View>
+      <Txt muted>{tr.notifSub}</Txt>
+      <Txt v="caption" muted>{tr.notifDevice}</Txt>
+      {error ? <ErrorLine text={error} /> : null}
+      <Button kind={pushOn ? 'ghost' : 'primary'} icon="bell" title={busy ? tr.wait : pushOn ? tr.notifDisable : tr.notifEnable} disabled={busy} onPress={toggle} />
+    </Sheet>
   );
 }

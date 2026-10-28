@@ -105,14 +105,14 @@ export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: (
         ) : (
           <>
             <View style={{ alignItems: 'center', gap: 12 }}>
-              <QuestIcon icon={q.icon} color={q.kind === 'idea' ? 'lilla' : q.kind === 'group' ? 'menta' : 'azzurro'} size={88} />
-              {q.kind === 'idea' ? <Txt v="label" muted>{tr.ideaLabel}</Txt> : q.kind === 'group' ? <Txt v="label" muted>{tr.proposedBy(by?.name ?? tr.someoneInGroup)}</Txt> : null}
+              <QuestIcon icon={q.icon} color={q.kind === 'idea' ? 'lilla' : q.kind === 'group' ? 'menta' : q.kind === 'special' ? 'sole' : 'azzurro'} size={88} />
+              {q.kind === 'idea' ? <Txt v="label" muted>{tr.ideaLabel}</Txt> : q.kind === 'group' ? <Txt v="label" muted>{tr.proposedBy(by?.name ?? tr.someoneInGroup)}</Txt> : q.kind === 'special' ? <Txt v="label" muted>{tr.specialBy(by?.name ?? tr.someoneInGroup)}</Txt> : null}
               <Txt v="display" style={{ fontSize: 22, lineHeight: 28, textAlign: 'center' }}>{q.title}</Txt>
-              <Txt muted style={{ textAlign: 'center', maxWidth: 340 }}>{q.desc || tr.groupQuestDesc}</Txt>
+              <Txt muted style={{ textAlign: 'center', maxWidth: 340 }}>{q.desc || (q.kind === 'special' ? tr.specialFrom(by?.name ?? tr.someoneInGroup) : tr.groupQuestDesc)}</Txt>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Fact big={`+${q.pts}`} small={tr.points} color={t.soleText} />
-              <Fact big={q.kind === 'group' ? tr.endOfMonth : tr.sunday} small={tr.deadline} />
+              <Fact big={q.kind === 'group' || q.kind === 'special' ? tr.endOfMonth : tr.sunday} small={tr.deadline} />
               <Fact big={q.video ? tr.video : tr.photoOrVideo} small={tr.proofLabel} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>

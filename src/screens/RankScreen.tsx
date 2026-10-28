@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { useEffect } from 'react';
+import { ScrollView, View } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
-import { api, Member } from '../lib/api';
+import { Member } from '../lib/api';
 import { fmtNum, useI18n } from '../lib/i18n';
 import { useStore } from '../lib/store';
 import { fill, font, radius, shade, useTheme } from '../lib/theme';
 import { Icon } from '../components/Icon';
-import { Sheet, useFx } from '../components/overlays';
-import { ErrorLine } from '../components/QuestSheet';
-import { Avatar, Button, SPRING, Txt, tap } from '../components/ui';
+import { KingCard } from '../components/KingPowers';
+import { Avatar, SPRING, Txt } from '../components/ui';
 import { monthOf } from './QuestScreen';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -47,15 +46,11 @@ export function RankScreen({ topInset }: { topInset: number }) {
   const t = useTheme();
   const { t: tr, lang } = useI18n();
   const { state } = useStore();
-  const [choose, setChoose] = useState(false);
   if (!state) return null;
   const ranked = state.month.ranking.map(id => state.members.find(m => m.id === id)!).filter(Boolean);
   const podium = [ranked[1], ranked[0], ranked[2]];
   const heights = [104, 140, 80];
   const medal = [t.sole, t.argento, t.bronzo];
-  const king = state.king;
-  const kingMember = king ? state.members.find(m => m.id === king.memberId) : null;
-  const opt = king?.outing ? tr.outing[king.outing.k] : null;
   const month = monthOf(state.month.key, tr.months);
 
   return (
@@ -88,29 +83,7 @@ export function RankScreen({ topInset }: { topInset: number }) {
         ))}
       </Animated.View>
 
-      {king && kingMember ? (
-        <View style={{ backgroundColor: t.soleSoft, borderRadius: radius.md, padding: 16, gap: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon name="crown" size={16} color={t.sole} /><Txt v="label" color={t.soleText}>{tr.winnerOf(monthOf(king.month, tr.months))}</Txt>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Avatar name={kingMember.name} color={kingMember.color} size={44} />
-            <View style={{ flex: 1 }}>
-              <Txt v="title">{tr.wonMonth(king.memberId === state.me, kingMember.name, monthOf(king.month, tr.months))}</Txt>
-              <Txt v="caption" muted>{`${fmtNum(king.pts, lang)} pt`}</Txt>
-            </View>
-          </View>
-          {king.outing ? (
-            <View style={{ backgroundColor: t.ground, borderRadius: radius.sm, padding: 12, gap: 2 }}>
-              <Txt v="label" muted>{opt?.label ?? tr.choiceLabel}</Txt>
-              <Txt v="heading">{king.outing.v}</Txt>
-              <Txt v="caption" muted>{tr.restByGroup}</Txt>
-            </View>
-          ) : king.memberId === state.me ? (
-            <Button kind="sole" icon="crown" title={tr.chooseOuting} onPress={() => setChoose(true)} />
-          ) : <Txt muted>{tr.stillToChoose(kingMember.name)}</Txt>}
-        </View>
-      ) : null}
+      {state.king ? <KingCard state={state} /> : null}
 
       <View style={{ backgroundColor: t.soleSoft, borderRadius: radius.md, padding: 16, gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -120,56 +93,6 @@ export function RankScreen({ topInset }: { topInset: number }) {
         <Txt muted>{tr.prizeSub}</Txt>
       </View>
 
-      <OutingSheet open={choose} onClose={() => setChoose(false)} />
     </ScrollView>
-  );
-}
-
-function OutingSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const t = useTheme();
-  const { t: tr } = useI18n();
-  const fx = useFx();
-  const { refresh } = useStore();
-  const [k, setK] = useState<string | null>(null);
-  const [v, setV] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const submit = async () => {
-    if (!k || !v.trim()) return;
-    setBusy(true); setError('');
-    try { await api.outing(k, v); await refresh(); onClose(); fx.confetti(); tap('success'); fx.toast(tr.choiceToast, 'crown'); }
-    catch (e) { setError(e instanceof Error ? e.message : tr.genericError); }
-    finally { setBusy(false); }
-  };
-  return (
-    <Sheet open={open} onClose={onClose}>
-      <Txt v="display" style={{ fontSize: 22, lineHeight: 28 }}>{tr.chooseOuting}</Txt>
-      <Txt muted>{tr.outingSub}</Txt>
-      {Object.entries(tr.outing).map(([key, o]) => (
-        <View key={key} style={{ gap: 8 }}>
-          <Txt v="heading" style={{ fontSize: 15 }}>{o.label}</Txt>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {o.opts.map(opt => {
-              const on = k === key && v === opt;
-              return (
-                <Pressable key={opt} onPress={() => { tap(); setK(key); setV(opt); }} accessibilityRole="button" accessibilityState={{ selected: on }}
-                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.full, borderWidth: 2, borderBottomWidth: 4, borderColor: on ? t.soleShade : t.line, backgroundColor: on ? t.sole : t.ground }}>
-                  <Txt style={{ fontFamily: font.bold, fontSize: 15, color: on ? t.onColor : t.ink }}>{opt}</Txt>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ))}
-      {k ? (
-        <View style={{ gap: 6 }}>
-          <Txt v="heading" style={{ fontSize: 15 }}>{tr.canWrite(tr.outing[k].label)}</Txt>
-          <TextInput value={v} onChangeText={setV} maxLength={60} placeholderTextColor={t.inkMuted} placeholder={tr.outingPh}
-            style={{ fontFamily: font.semibold, fontSize: 17, color: t.ink, backgroundColor: t.nuvola, borderWidth: 2, borderColor: t.line, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12 }} />
-        </View>
-      ) : null}
-      {error ? <ErrorLine text={error} /> : null}
-      <Button kind="sole" title={busy ? tr.wait : tr.confirmChoice} disabled={busy || !k || !v.trim()} onPress={submit} />
-    </Sheet>
   );
 }

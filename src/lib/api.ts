@@ -40,12 +40,26 @@ async function call<T>(method: string, path: string, body?: unknown, raw?: Blob,
 
 export type Member = { id: string; name: string; color: string; pts: number; quests: number; wins: string[]; joinedAt: string };
 export type Quest = {
-  id: string; kind: 'list' | 'idea' | 'group'; title: string; desc: string; pts: number; icon: string; video: boolean;
+  id: string; kind: 'list' | 'idea' | 'group' | 'special'; title: string; desc: string; pts: number; icon: string; video: boolean;
   state: 'new' | 'active' | 'pending' | 'done'; rejected: boolean; doneBy: string[]; by?: string;
 };
 export type ToVote = { id: string; memberId: string; questTitle: string; pts: number; icon: string; type: 'image' | 'video'; note: string; createdAt: string; media: string };
-export type FeedItem = { who: string; kind: 'proof' | 'done' | 'proposal' | 'join'; quest?: string; pts?: number; media?: 'image' | 'video'; at: string };
+export type FeedItem = {
+  who: string; kind: 'proof' | 'done' | 'proposal' | 'join' | 'theme' | 'special' | 'veto' | 'outing';
+  quest?: string; pts?: number; media?: 'image' | 'video'; to?: string; text?: string; k?: string; status?: 'approved' | 'rejected'; at: string;
+};
 export type Outing = { memberId: string; k: string; v: string; at: string };
+export type Status = 'pending' | 'approved' | 'rejected';
+export type King = {
+  memberId: string; month: string; pts: number;
+  outing: Outing | null;
+  theme: { text: string; at: string } | null;
+  special: { to: string; title: string; pts: number; at: string } | null;
+  veto: { proofId: string; to: string; questTitle: string; status: 'approved' | 'rejected'; at: string } | null;
+  vetoUsed: boolean;
+  // Only for the king: this month's judged proofs of the others.
+  vetoable: { id: string; memberId: string; questTitle: string; pts: number; type: 'image' | 'video'; status: 'approved' | 'rejected'; media: string }[];
+};
 export type GroupState = {
   me: string;
   group: { id: string; name: string; code: string };
@@ -55,12 +69,13 @@ export type GroupState = {
   quests: Quest[];
   toVote: ToVote[];
   feed: FeedItem[];
-  king: { memberId: string; month: string; pts: number; outing: Outing | null } | null;
-  myProofs: { id: string; questTitle: string; type: 'image' | 'video'; status: 'pending' | 'approved' | 'rejected'; media: string; createdAt: string }[];
+  king: King | null;
+  myProofs: { id: string; questTitle: string; type: 'image' | 'video'; status: Status; vetoed: boolean; media: string; createdAt: string }[];
 };
 export type Account = { id: string; username: string; name: string };
 export type MyGroup = { id: string; name: string; code: string; members: number; joinedAt: string };
 export type Me = { account: Account; groups: MyGroup[] };
+export type PushDevice = { kind: 'web'; sub: unknown } | { kind: 'expo'; token: string };
 
 export const api = {
   signup: (username: string, name: string, password: string, legacyKey?: string | null) =>
@@ -75,7 +90,13 @@ export const api = {
   accept: (questId: string) => call('POST', 'accept', { questId }),
   vote: (proofId: string, v: 'yes' | 'no') => call('POST', 'votes', { proofId, v }),
   outing: (k: string, v: string) => call('POST', 'outing', { k, v }),
+  theme: (text: string) => call('POST', 'theme', { text }),
+  special: (to: string, title: string, pts: number) => call('POST', 'special', { to, title, pts }),
+  veto: (proofId: string) => call<{ status: 'approved' | 'rejected' }>('POST', 'veto', { proofId }),
   propose: (title: string, pts: number) => call('POST', 'proposals', { title, pts }),
+  pushKey: () => call<{ publicKey: string }>('GET', 'push/key'),
+  pushOn: (device: PushDevice) => call<{ deviceId: string }>('POST', 'push/devices', device),
+  pushOff: (deviceId: string) => call('DELETE', `push/devices/${deviceId}`),
   leave: () => call('POST', 'leave', {}),
   async uploadProof(opts: { questId: string; uri: string; type: 'image' | 'video'; mime: string; note: string; onProgress?: (p: number) => void }) {
     // Read the whole file once, then send it in pieces small enough for the server.

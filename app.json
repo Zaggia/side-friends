@@ -42,7 +42,13 @@
       ],
       "expo-video",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#2E9BF0"
+        }
+      ]
     ],
     "scheme": "sidefriends"
   }

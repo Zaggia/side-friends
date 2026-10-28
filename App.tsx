@@ -5,7 +5,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useFonts, Unbounded_700Bold, Unbounded_800ExtraBold } from '@expo-google-fonts/unbounded';
 import { Figtree_400Regular, Figtree_500Medium, Figtree_600SemiBold, Figtree_700Bold, Figtree_800ExtraBold } from '@expo-google-fonts/figtree';
-import { StoreProvider, useStore } from './src/lib/store';
+import { StoreProvider, type Tab, useStore } from './src/lib/store';
 import { LangProvider, useI18n } from './src/lib/i18n';
 import { LanguageScreen } from './src/components/Language';
 import { font, radius, useTheme } from './src/lib/theme';
@@ -18,7 +18,6 @@ import { VoteScreen } from './src/screens/VoteScreen';
 import { RankScreen } from './src/screens/RankScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 
-type Tab = 'quest' | 'vota' | 'classifica' | 'profilo';
 const TABS: { id: Tab; icon: string }[] = [
   { id: 'quest', icon: 'quest' },
   { id: 'vota', icon: 'vote' },
@@ -51,10 +50,10 @@ function Splash() {
 }
 
 function Root() {
-  const { ready, me, groupId, state, error, refresh, boot } = useStore();
+  const { ready, me, groupId, state, error, refresh, boot, syncPush } = useStore();
   const { ready: langReady, chosen, lang } = useI18n();
-  // Quest titles come from the server in the chosen language: reload them when it changes.
-  useEffect(() => { if (groupId) refresh(); }, [lang]);
+  // Quest titles and notifications come from the server in the chosen language: update them when it changes.
+  useEffect(() => { if (groupId) refresh(); syncPush(); }, [lang]);
   if (!langReady || !ready) return <Splash />;
   if (!chosen) return <LanguageScreen />;
   if (!me && error) return <LoadError text={error} onRetry={boot} />;
@@ -81,8 +80,8 @@ function LoadError({ text, onRetry }: { text: string | null; onRetry: () => void
 function Main() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { state } = useStore();
-  const [tab, setTab] = useState<Tab>('quest');
+  const { state, openTab, takeTab } = useStore();
+  const [tab, setTab] = useState<Tab>(openTab ?? 'quest');
   const x = useSharedValue(0), o = useSharedValue(1);
   const go = (next: Tab) => {
     if (next === tab) return;
@@ -91,6 +90,8 @@ function Main() {
     x.value = withSpring(0, SPRING.snappy); o.value = withTiming(1, { duration: 180 });
     setTab(next);
   };
+  // A tapped notification opens its tab.
+  useEffect(() => { if (openTab) { go(openTab); takeTab(); } }, [openTab]);
   const screen = useAnimatedStyle(() => ({ flex: 1, opacity: o.value, transform: [{ translateX: x.value }] }));
   const top = insets.top;
   return (
