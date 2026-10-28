@@ -6,6 +6,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, w
 import { useFonts, Unbounded_700Bold, Unbounded_800ExtraBold } from '@expo-google-fonts/unbounded';
 import { Figtree_400Regular, Figtree_500Medium, Figtree_600SemiBold, Figtree_700Bold, Figtree_800ExtraBold } from '@expo-google-fonts/figtree';
 import { StoreProvider, useStore } from './src/lib/store';
+import { LangProvider, useI18n } from './src/lib/i18n';
+import { LanguageScreen } from './src/components/Language';
 import { font, radius, useTheme } from './src/lib/theme';
 import { FxProvider } from './src/components/overlays';
 import { Icon, Mark } from './src/components/Icon';
@@ -17,11 +19,11 @@ import { RankScreen } from './src/screens/RankScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 
 type Tab = 'quest' | 'vota' | 'classifica' | 'profilo';
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'quest', label: 'Quest', icon: 'quest' },
-  { id: 'vota', label: 'Vota', icon: 'vote' },
-  { id: 'classifica', label: 'Classifica', icon: 'podium' },
-  { id: 'profilo', label: 'Profilo', icon: 'user' }
+const TABS: { id: Tab; icon: string }[] = [
+  { id: 'quest', icon: 'quest' },
+  { id: 'vota', icon: 'vote' },
+  { id: 'classifica', icon: 'podium' },
+  { id: 'profilo', icon: 'user' }
 ];
 
 export default function App() {
@@ -29,9 +31,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="auto" />
-      <StoreProvider>
-        <FxProvider>{loaded ? <Root /> : <Splash />}</FxProvider>
-      </StoreProvider>
+      <LangProvider>
+        <StoreProvider>
+          <FxProvider>{loaded ? <Root /> : <Splash />}</FxProvider>
+        </StoreProvider>
+      </LangProvider>
     </SafeAreaProvider>
   );
 }
@@ -47,17 +51,21 @@ function Splash() {
 }
 
 function Root() {
-  const { ready, signedIn, state, error, refresh } = useStore();
+  const { ready, signedIn, state, error, refresh, left } = useStore();
+  const { ready: langReady, chosen, lang, t: tr } = useI18n();
   const t = useTheme();
-  if (!ready || (signedIn && !state && !error)) return <Splash />;
-  if (!signedIn) return <Welcome />;
+  // Quest titles come from the server in the chosen language: reload them when it changes.
+  useEffect(() => { if (signedIn) refresh(); }, [lang]);
+  if (!langReady || !ready || (signedIn && !state && !error)) return <Splash />;
+  if (!chosen) return <LanguageScreen />;
+  if (!signedIn) return <Welcome skipIntro={left} />;
   if (!state) {
     return (
       <View style={{ flex: 1, backgroundColor: t.ground, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 }}>
         <Mark size={80} colors={[t.azzurro, t.sole, t.fragola]} />
-        <Txt v="title" style={{ textAlign: 'center' }}>Non riesco a caricare il gruppo</Txt>
+        <Txt v="title" style={{ textAlign: 'center' }}>{tr.loadFail}</Txt>
         <Txt muted style={{ textAlign: 'center' }}>{error}</Txt>
-        <Button title="Riprova" icon="refresh" onPress={refresh} />
+        <Button title={tr.retry} icon="refresh" onPress={refresh} />
       </View>
     );
   }
@@ -91,18 +99,20 @@ function Main() {
   );
 }
 
-function TabButton({ item, active, badge, onPress }: { item: { id: Tab; label: string; icon: string }; active: boolean; badge: number; onPress: () => void }) {
+function TabButton({ item, active, badge, onPress }: { item: { id: Tab; icon: string }; active: boolean; badge: number; onPress: () => void }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
+  const label = tr.tabs[item.id];
   const s = useSharedValue(1);
   useEffect(() => { if (active) s.value = withSequence(withTiming(0.8, { duration: 70 }), withSpring(1, SPRING.bouncy)); }, [active]);
   const pop = useAnimatedStyle(() => ({ transform: [{ scale: s.value }] }));
   const color = active ? t.azzurroText : t.inkMuted;
   return (
-    <Pressable onPress={() => { tap(); onPress(); }} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={item.label} style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 }}>
+    <Pressable onPress={() => { tap(); onPress(); }} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label} style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 }}>
       <Animated.View style={[{ width: 56, height: 34, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: active ? t.azzurro : 'transparent', backgroundColor: active ? t.azzurroSoft : 'transparent' }, pop]}>
         <Icon name={item.icon} size={24} color={color} />
       </Animated.View>
-      <Txt style={{ fontFamily: font.black, fontSize: 11, lineHeight: 14, color }}>{item.label}</Txt>
+      <Txt style={{ fontFamily: font.black, fontSize: 11, lineHeight: 14, color }}>{label}</Txt>
       {badge > 0 ? (
         <View style={{ position: 'absolute', top: 0, left: '55%', minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 10, backgroundColor: t.fragola, borderWidth: 2, borderColor: t.ground, alignItems: 'center', justifyContent: 'center' }}>
           <Txt style={{ fontFamily: font.black, fontSize: 11, lineHeight: 14, color: t.onColor }}>{String(badge)}</Txt>

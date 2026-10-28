@@ -4,6 +4,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import Animated, { Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, mediaUrl, ToVote } from '../lib/api';
+import { useI18n } from '../lib/i18n';
 import { useStore } from '../lib/store';
 import { font, radius, useTheme } from '../lib/theme';
 import { Icon, Mark } from '../components/Icon';
@@ -13,6 +14,7 @@ import { Avatar, Button, SPRING, Txt, tap } from '../components/ui';
 
 function Card({ p, top, request, onVote }: { p: ToVote; top: boolean; request: boolean | null; onVote: (ok: boolean) => void }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
   const { state } = useStore();
   const who = state!.members.find(m => m.id === p.memberId);
   const x = useSharedValue(0), y = useSharedValue(0);
@@ -45,27 +47,27 @@ function Card({ p, top, request, onVote }: { p: ToVote; top: boolean; request: b
         <ProofMedia uri={mediaUrl(p.media)} type={p.type} controls={false} autoPlay={top} style={{ width: '100%', height: '100%' }} />
         {p.type === 'video' && top ? (
           <Pressable onPress={() => setFull(true)} style={{ position: 'absolute', right: 12, top: 12, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.ground, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.full }}>
-            <Icon name="play" size={14} color={t.ink} /><Txt v="caption" style={{ fontFamily: font.black }}>Guarda con audio</Txt>
+            <Icon name="play" size={14} color={t.ink} /><Txt v="caption" style={{ fontFamily: font.black }}>{tr.watchWithSound}</Txt>
           </Pressable>
         ) : null}
         <Animated.View style={[{ position: 'absolute', left: 20, top: 28, transform: [{ rotate: '-12deg' }], borderWidth: 4, borderColor: t.azzurroText, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 4, backgroundColor: t.ground }, yes]}>
-          <Txt style={{ fontFamily: font.display, fontSize: 26, color: t.azzurroText }}>VALE</Txt>
+          <Txt style={{ fontFamily: font.display, fontSize: 26, color: t.azzurroText }}>{tr.stampYes}</Txt>
         </Animated.View>
         <Animated.View style={[{ position: 'absolute', right: 20, top: 28, transform: [{ rotate: '12deg' }], borderWidth: 4, borderColor: t.fragolaText, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 4, backgroundColor: t.ground }, no]}>
-          <Txt style={{ fontFamily: font.display, fontSize: 26, color: t.fragolaText }}>NON VALE</Txt>
+          <Txt style={{ fontFamily: font.display, fontSize: 26, color: t.fragolaText }}>{tr.stampNo}</Txt>
         </Animated.View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }}>
         <Avatar name={who?.name ?? '?'} color={who?.color ?? 'azzurro'} />
         <View style={{ flex: 1 }}>
-          <Txt v="heading" numberOfLines={2}>{`${who?.name ?? 'Qualcuno'} · ${p.questTitle}`}</Txt>
-          <Txt v="caption" muted numberOfLines={2}>{p.note ? `«${p.note}» · ` : ''}{`+${p.pts} pt se vale`}</Txt>
+          <Txt v="heading" numberOfLines={2}>{`${who?.name ?? tr.someone} · ${p.questTitle}`}</Txt>
+          <Txt v="caption" muted numberOfLines={2}>{p.note ? `«${p.note}» · ` : ''}{tr.ifValid(p.pts)}</Txt>
         </View>
       </View>
       <Modal visible={full} animationType="slide" onRequestClose={() => setFull(false)}>
         <View style={{ flex: 1, backgroundColor: '#000' }}>
           {full ? <FullVideo uri={mediaUrl(p.media)} /> : null}
-          <Pressable onPress={() => setFull(false)} accessibilityLabel="Chiudi" style={{ position: 'absolute', top: 50, right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' }}>
+          <Pressable onPress={() => setFull(false)} accessibilityLabel={tr.close} style={{ position: 'absolute', top: 50, right: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name="x" size={22} color="#0e1b33" />
           </Pressable>
         </View>
@@ -82,6 +84,7 @@ function FullVideo({ uri }: { uri: string }) {
 
 export function VoteScreen({ topInset }: { topInset: number }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
   const fx = useFx();
   const insets = useSafeAreaInsets();
   const { state, refresh } = useStore();
@@ -93,17 +96,17 @@ export function VoteScreen({ topInset }: { topInset: number }) {
   const vote = async (p: ToVote, ok: boolean) => {
     setGone(g => [...g, p.id]);
     setRequest(null);
-    const who = state.members.find(m => m.id === p.memberId)?.name ?? 'Qualcuno';
-    fx.toast(ok ? `Hai votato: vale. ${who} prende +${p.pts} pt se il gruppo è d’accordo.` : 'Hai votato: non vale.', ok ? 'check' : 'x');
-    try { await api.vote(p.id, ok ? 'yes' : 'no'); } catch (e) { fx.toast(e instanceof Error ? e.message : 'Voto non registrato.', 'x'); }
+    const who = state.members.find(m => m.id === p.memberId)?.name ?? tr.someone;
+    fx.toast(ok ? tr.votedYes(who, p.pts) : tr.votedNo, ok ? 'check' : 'x');
+    try { await api.vote(p.id, ok ? 'yes' : 'no'); } catch (e) { fx.toast(e instanceof Error ? e.message : tr.voteFailed, 'x'); }
     refresh();
   };
 
   return (
     <ScrollView contentContainerStyle={{ paddingTop: topInset + 8, paddingHorizontal: 16, paddingBottom: 24, gap: 20, maxWidth: 560, width: '100%', alignSelf: 'center', flexGrow: 1 }}>
       <View>
-        <Txt v="display">Da votare</Txt>
-        <Txt muted>Guarda le prove degli amici e decidi se valgono.</Txt>
+        <Txt v="display">{tr.toVoteTitle}</Txt>
+        <Txt muted>{tr.toVoteSub}</Txt>
       </View>
       {queue.length ? (
         <>
@@ -113,16 +116,16 @@ export function VoteScreen({ topInset }: { topInset: number }) {
             ))}
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 32 }}>
-            <RoundButton icon="x" label="Non vale" color={t.fragolaText} bg={t.ground} edge={t.line} onPress={() => !request && setRequest({ id: queue[0].id, ok: false })} />
-            <RoundButton icon="check" label="Vale" color={t.onColor} bg={t.azzurro} edge={t.azzurroShade} onPress={() => !request && setRequest({ id: queue[0].id, ok: true })} />
+            <RoundButton icon="x" label={tr.notValid} color={t.fragolaText} bg={t.ground} edge={t.line} onPress={() => !request && setRequest({ id: queue[0].id, ok: false })} />
+            <RoundButton icon="check" label={tr.valid} color={t.onColor} bg={t.azzurro} edge={t.azzurroShade} onPress={() => !request && setRequest({ id: queue[0].id, ok: true })} />
           </View>
-          <Txt v="caption" muted style={{ textAlign: 'center' }}>Trascina la prova a destra se vale, a sinistra se no.</Txt>
+          <Txt v="caption" muted style={{ textAlign: 'center' }}>{tr.dragHint}</Txt>
         </>
       ) : (
         <View style={{ alignItems: 'center', gap: 16, paddingVertical: 48 }}>
           <Mark size={96} colors={[t.azzurro, t.sole, t.fragola]} />
-          <Txt v="title" style={{ fontSize: 20 }}>Hai votato tutto</Txt>
-          <Txt muted style={{ textAlign: 'center', maxWidth: 280 }}>Quando qualcuno carica una nuova prova te la trovi qui.</Txt>
+          <Txt v="title" style={{ fontSize: 20 }}>{tr.allVoted}</Txt>
+          <Txt muted style={{ textAlign: 'center', maxWidth: 280 }}>{tr.allVotedSub}</Txt>
         </View>
       )}
     </ScrollView>

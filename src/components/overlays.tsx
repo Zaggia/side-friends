@@ -3,12 +3,14 @@ import { Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressa
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { radius, useTheme } from '../lib/theme';
+import { useI18n } from '../lib/i18n';
 import { Icon } from './Icon';
 import { SPRING, Txt } from './ui';
 
 /* ---------- bottom sheet: slides up on a spring, drag down to close ---------- */
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
   const insets = useSafeAreaInsets();
   const H = Dimensions.get('window').height;
   const y = useSharedValue(H);
@@ -42,7 +44,7 @@ export function Sheet({ open, onClose, children }: { open: boolean; onClose: () 
   return (
     <Modal transparent visible animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: t.backdrop }, back]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Chiudi" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={tr.close} />
       </Animated.View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }} pointerEvents="box-none">
         <Animated.View style={[{ backgroundColor: t.ground, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: '90%', width: '100%', maxWidth: 520, alignSelf: 'center' }, sheet]}>

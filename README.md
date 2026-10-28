@@ -11,12 +11,14 @@ L'app delle side quest per gruppi di amici. Ogni settimana escono 5 quest (3 dal
 - **Server** (`netlify/functions/api.mts`): una funzione Netlify che risponde su `/api/*`. Salva tutto in Netlify Blobs.
   - Ogni dato è scritto da una persona sola (un membro, una prova, un voto), quindi non esistono contatori da tenere allineati: punti, classifica e vincitore del mese si calcolano dai voti a ogni lettura.
   - Foto e video arrivano a pezzi da 3 MB e vengono serviti a pezzi, così i video fino a 60 MB passano nei limiti delle funzioni.
-- **Quest** (`server/quests.ts`): la lista del gruppo e le idee di riserva. L'estrazione della settimana è la stessa per tutto il gruppo e non ripete le quest finché la lista non finisce.
+- **Quest** (`server/quests.ts`): la lista del gruppo e le idee di riserva, in tutte le lingue. L'estrazione della settimana è la stessa per tutto il gruppo e non ripete le quest finché la lista non finisce.
+- **Lingue**: italiano, inglese, spagnolo, francese e tedesco. La prima schermata chiede la lingua, che si cambia poi dal Profilo. I testi dell'app sono in `src/lib/i18n.tsx`; quelli che manda il server (quest e messaggi di errore, `server/messages.ts`) arrivano nella lingua indicata dall'header `x-lang`.
 
 ## Regole
 
 - Si entra con il proprio nome e il codice del gruppo (6 caratteri). Niente password: la chiave resta sul telefono.
 - Una prova vale quando almeno metà degli altri membri vota «vale» e i sì superano i no. Se sei da solo nel gruppo vale subito, così puoi provare l'app.
+- Si esce dal gruppo dal Profilo (Impostazioni) o dalla finestra del gruppo. Chi esce sparisce da classifica, voti e prove da votare; per rientrare serve di nuovo il codice e si riparte da zero.
 - La classifica riparte il primo del mese (ora italiana). Chi ha vinto il mese prima sceglie una cosa sola tra dove si mangia, cosa si fa o cosa si vede.
 - Le quest della settimana cambiano il lunedì.
 

@@ -11,6 +11,8 @@ type Ctx = {
   refresh: () => Promise<void>;
   signIn: (auth: string) => Promise<void>;
   signOut: () => Promise<void>;
+  leave: () => Promise<void>;
+  left: boolean;
 };
 const StoreCtx = createContext<Ctx | null>(null);
 export const useStore = () => useContext(StoreCtx)!;
@@ -21,6 +23,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [signedIn, setSignedIn] = useState(false);
   const [state, setState] = useState<GroupState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [left, setLeft] = useState(false);
   const busy = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -67,7 +70,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState(null);
   }, []);
 
-  return <StoreCtx.Provider value={{ ready, signedIn, state, error, refresh, signIn, signOut }}>{children}</StoreCtx.Provider>;
+  // Leaving removes this member on the server, then forgets the key on this phone.
+  const leave = useCallback(async () => {
+    await api.leave();
+    await setAuth(null);
+    setLeft(true);
+    setSignedIn(false);
+    setState(null);
+  }, []);
+
+  return <StoreCtx.Provider value={{ ready, signedIn, state, error, refresh, signIn, signOut, leave, left }}>{children}</StoreCtx.Provider>;
 }
 
 export function useMember(id?: string | null) {

@@ -3,6 +3,7 @@ import { Modal, Platform, TextInput, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
 import { api, Quest } from '../lib/api';
+import { useI18n } from '../lib/i18n';
 import { useStore } from '../lib/store';
 import { font, radius, useTheme } from '../lib/theme';
 import { Icon } from './Icon';
@@ -16,6 +17,7 @@ type Picked = { uri: string; type: 'image' | 'video'; mime: string; seconds: num
 
 export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: () => void }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
   const { state, refresh } = useStore();
   const fx = useFx();
   const [picked, setPicked] = useState<Picked | null>(null);
@@ -31,8 +33,8 @@ export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: (
   const accept = async () => {
     if (!q) return;
     setBusy(true);
-    try { await api.accept(q.id); await refresh(); tap('success'); fx.toast('Quest accettata. Hai tempo fino a domenica.', 'bolt'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Errore'); }
+    try { await api.accept(q.id); await refresh(); tap('success'); fx.toast(tr.acceptedToast, 'bolt'); }
+    catch (e) { setError(e instanceof Error ? e.message : tr.genericError); }
     finally { setBusy(false); }
   };
 
@@ -40,7 +42,7 @@ export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: (
     if (!q) return;
     setError('');
     const perm = camera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted && Platform.OS !== 'web') { setError(camera ? 'Serve il permesso per la fotocamera. Attivalo nelle impostazioni del telefono.' : 'Serve il permesso per le foto. Attivalo nelle impostazioni del telefono.'); return; }
+    if (!perm.granted && Platform.OS !== 'web') { setError(camera ? tr.permCamera : tr.permLibrary); return; }
     const opts: ImagePicker.ImagePickerOptions = {
       mediaTypes: q.video ? ['videos'] : ['images', 'videos'],
       quality: 0.7,
@@ -52,10 +54,10 @@ export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: (
     if (res.canceled || !res.assets?.[0]) return;
     const a = res.assets[0];
     const type = a.type === 'video' ? 'video' : 'image';
-    if (q.video && type !== 'video') { setError('Per questa quest serve un video.'); return; }
+    if (q.video && type !== 'video') { setError(tr.videoRequired); return; }
     const seconds = a.duration ? a.duration / 1000 : null;
-    if (seconds && seconds > MAX_SECONDS + 0.5) { setError(`Il video dura ${Math.round(seconds)} secondi. Taglialo sotto i ${MAX_SECONDS} e riprova.`); return; }
-    if (a.fileSize && a.fileSize > MAX_BYTES) { setError('Il file è troppo pesante (oltre 60 MB). Prova con un video più corto.'); return; }
+    if (seconds && seconds > MAX_SECONDS + 0.5) { setError(tr.videoTooLong(Math.round(seconds), MAX_SECONDS)); return; }
+    if (a.fileSize && a.fileSize > MAX_BYTES) { setError(tr.fileTooBig); return; }
     setPicked({ uri: a.uri, type, mime: a.mimeType || (type === 'video' ? 'video/mp4' : 'image/jpeg'), seconds });
   };
 
@@ -69,7 +71,7 @@ export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: (
       tap('success');
       refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Caricamento non riuscito. Riprova.');
+      setError(e instanceof Error ? e.message : tr.uploadFailed);
       tap('warning');
     } finally { setBusy(false); setProgress(null); }
   };
@@ -82,52 +84,52 @@ export function QuestSheet({ quest, onClose }: { quest: Quest | null; onClose: (
       <Sheet open={!!q} onClose={onClose}>
         {q ? (picked ? (
           <>
-            <Txt v="display" style={{ fontSize: 22, lineHeight: 28 }}>Controlla la prova</Txt>
+            <Txt v="display" style={{ fontSize: 22, lineHeight: 28 }}>{tr.checkProof}</Txt>
             <View>
               <ProofMedia uri={picked.uri} type={picked.type} style={{ width: '100%', aspectRatio: 4 / 5, maxHeight: 420, borderRadius: radius.md }} />
               <View style={{ position: 'absolute', left: 10, top: 10, flexDirection: 'row', gap: 4, alignItems: 'center', backgroundColor: t.ground, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.full }}>
                 <Icon name={picked.type === 'video' ? 'video' : 'image'} size={14} color={t.ink} />
-                <Txt v="caption" style={{ fontFamily: font.black }}>{picked.type === 'video' ? `Video${picked.seconds && picked.seconds >= 1 ? ' · ' + Math.round(picked.seconds) + ' s' : ''}` : 'Foto'}</Txt>
+                <Txt v="caption" style={{ fontFamily: font.black }}>{picked.type === 'video' ? `${tr.video}${picked.seconds && picked.seconds >= 1 ? ' · ' + Math.round(picked.seconds) + ' s' : ''}` : tr.photo}</Txt>
               </View>
             </View>
             <View style={{ gap: 6 }}>
-              <Txt v="heading" style={{ fontSize: 15 }}>Aggiungi un commento</Txt>
-              <TextInput value={note} onChangeText={setNote} maxLength={140} multiline placeholder="Facoltativo" placeholderTextColor={t.inkMuted}
+              <Txt v="heading" style={{ fontSize: 15 }}>{tr.addComment}</Txt>
+              <TextInput value={note} onChangeText={setNote} maxLength={140} multiline placeholder={tr.optional} placeholderTextColor={t.inkMuted}
                 style={{ fontFamily: font.body, fontSize: 16, color: t.ink, backgroundColor: t.nuvola, borderWidth: 2, borderColor: t.line, borderRadius: radius.md, padding: 12, minHeight: 60 }} />
             </View>
             {progress !== null ? <Progress value={progress} /> : null}
             {error ? <ErrorLine text={error} /> : null}
-            <Button title={busy ? `Invio… ${Math.round((progress ?? 0) * 100)}%` : 'Invia al gruppo'} disabled={busy} onPress={send} />
-            <Button title="Scegli un altro file" kind="ghost" disabled={busy} onPress={() => setPicked(null)} />
+            <Button title={busy ? tr.sending(Math.round((progress ?? 0) * 100)) : tr.sendToGroup} disabled={busy} onPress={send} />
+            <Button title={tr.pickAnother} kind="ghost" disabled={busy} onPress={() => setPicked(null)} />
           </>
         ) : (
           <>
             <View style={{ alignItems: 'center', gap: 12 }}>
               <QuestIcon icon={q.icon} color={q.kind === 'idea' ? 'lilla' : q.kind === 'group' ? 'menta' : 'azzurro'} size={88} />
-              {q.kind === 'idea' ? <Txt v="label" muted>Idea nuova della settimana</Txt> : q.kind === 'group' ? <Txt v="label" muted>{`Proposta da ${by?.name ?? 'qualcuno del gruppo'}`}</Txt> : null}
+              {q.kind === 'idea' ? <Txt v="label" muted>{tr.ideaLabel}</Txt> : q.kind === 'group' ? <Txt v="label" muted>{tr.proposedBy(by?.name ?? tr.someoneInGroup)}</Txt> : null}
               <Txt v="display" style={{ fontSize: 22, lineHeight: 28, textAlign: 'center' }}>{q.title}</Txt>
-              <Txt muted style={{ textAlign: 'center', maxWidth: 340 }}>{q.desc}</Txt>
+              <Txt muted style={{ textAlign: 'center', maxWidth: 340 }}>{q.desc || tr.groupQuestDesc}</Txt>
             </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <Fact big={`+${q.pts}`} small="punti" color={t.soleText} />
-              <Fact big={q.kind === 'group' ? 'Fine mese' : 'Domenica'} small="scadenza" />
-              <Fact big={q.video ? 'Video' : 'Foto/video'} small="prova" />
+              <Fact big={`+${q.pts}`} small={tr.points} color={t.soleText} />
+              <Fact big={q.kind === 'group' ? tr.endOfMonth : tr.sunday} small={tr.deadline} />
+              <Fact big={q.video ? tr.video : tr.photoOrVideo} small={tr.proofLabel} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {others.length ? <AvatarStack people={others} size={26} /> : null}
-              <Txt v="caption" muted>{others.length ? `Già fatta da ${others.map(o => o.name).join(', ')}` : 'Nessuno del gruppo l’ha ancora fatta. Sii il primo.'}</Txt>
+              <Txt v="caption" muted>{others.length ? tr.alreadyDoneBy(others.map(o => o.name).join(', ')) : tr.nobodyYet}</Txt>
             </View>
-            {q.rejected && q.state !== 'pending' ? <ErrorLine text="Il gruppo ha detto che la tua prova non vale. Puoi riprovare con una nuova." /> : null}
+            {q.rejected && q.state !== 'pending' ? <ErrorLine text={tr.rejectedNote} /> : null}
             {error ? <ErrorLine text={error} /> : null}
-            {q.state === 'new' ? <Button title={busy ? 'Un attimo…' : 'Accetta la quest'} disabled={busy} onPress={accept} />
+            {q.state === 'new' ? <Button title={busy ? tr.wait : tr.accept} disabled={busy} onPress={accept} />
               : q.state === 'active' ? (
                 <>
-                  <Button title={q.video ? 'Registra il video' : 'Scatta o registra'} icon="camera" onPress={() => pick(true)} />
-                  <Button title="Scegli dalla galleria" kind="ghost" icon="image" onPress={() => pick(false)} />
-                  <Txt v="caption" muted style={{ textAlign: 'center' }}>Video fino a {MAX_SECONDS} secondi.</Txt>
+                  <Button title={q.video ? tr.recordVideo : tr.shootOrRecord} icon="camera" onPress={() => pick(true)} />
+                  <Button title={tr.fromGallery} kind="ghost" icon="image" onPress={() => pick(false)} />
+                  <Txt v="caption" muted style={{ textAlign: 'center' }}>{tr.videoUpTo(MAX_SECONDS)}</Txt>
                 </>
-              ) : q.state === 'pending' ? <Button title="Il gruppo sta votando" disabled />
-              : <Button title="Quest completata" icon="check" disabled />}
+              ) : q.state === 'pending' ? <Button title={tr.groupVoting} disabled />
+              : <Button title={tr.questDone} icon="check" disabled />}
           </>
         )) : null}
       </Sheet>
@@ -167,6 +169,7 @@ function Progress({ value }: { value: number }) {
 
 function Celebrate({ sent, onClose }: { sent: { quest: Quest; media: Picked } | null; onClose: () => void }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
   const s = useSharedValue(0), up = useSharedValue(0);
   useEffect(() => {
     if (!sent) return;
@@ -184,11 +187,11 @@ function Celebrate({ sent, onClose }: { sent: { quest: Quest; media: Picked } | 
           <View style={{ flex: 1, borderRadius: 60, backgroundColor: t.azzurro, alignItems: 'center', justifyContent: 'center' }}><Icon name="check" size={60} color={t.onColor} /></View>
         </Animated.View>
         <Animated.View style={[{ gap: 10, alignItems: 'center' }, rise]}>
-          <Txt v="display" style={{ textAlign: 'center' }}>Prova inviata</Txt>
-          <Txt muted style={{ textAlign: 'center', maxWidth: 300 }}>Ora il gruppo vota. Se vale, prendi <Txt style={{ color: t.soleText, fontFamily: font.black }}>+{sent.quest.pts} pt</Txt>.</Txt>
+          <Txt v="display" style={{ textAlign: 'center' }}>{tr.proofSent}</Txt>
+          <Txt muted style={{ textAlign: 'center', maxWidth: 300 }}>{tr.proofSentSub(sent.quest.pts)}</Txt>
           <ProofMedia uri={sent.media.uri} type={sent.media.type} controls={false} style={{ width: 140, height: 175, borderRadius: radius.md, transform: [{ rotate: '-4deg' }], borderWidth: 3, borderColor: t.ground }} />
         </Animated.View>
-        <Button title="Continua" onPress={onClose} />
+        <Button title={tr.continue} onPress={onClose} />
       </View>
       <Confetti />
     </Modal>

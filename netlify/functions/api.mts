@@ -1,14 +1,17 @@
 import type { Config, Context } from '@netlify/functions';
 import { getStore } from '@netlify/blobs';
-import { IDEAS, LIST, OUTING, weekQuests, type QuestDef } from '../../server/quests.ts';
+import { IDEAS, LIST, OUTING_KEYS, pickLang, questText, weekQuests, type Lang, type QuestDef } from '../../server/quests.ts';
+import { message, type MessageKey } from '../../server/messages.ts';
 
 // Data lives in two Blobs stores. Every key is written by one person for one fact
 // (a member, a proof, a vote), so nothing is a shared counter: points, ranks and
 // winners are computed from proofs and votes on each read.
 //   data:  codes/{CODE} groups/{gid} members/{gid}/{mid} proofs/{gid}/{pid}
-//          votes/{gid}/{pid}/{mid} accepts/{gid}/{mid}/{qid} done/{gid}/{mid}/{qid}
+//          votes/{gid}/{pid}/{mid} accepts/{gid}/{mid}/{qid}
 //          outings/{gid}/{month} proposals/{gid}/{id}
 //   media: {gid}/{pid}/{chunk}
+// Someone who leaves a group is removed from members/; everything they wrote stays,
+// but only current members' proofs and votes count.
 const data = () => getStore({ name: 'sf-data', consistency: 'strong' });
 const media = () => getStore({ name: 'sf-media', consistency: 'strong' });
 
@@ -28,9 +31,9 @@ type Vote = { v: 'yes' | 'no'; at: string };
 type Proposal = { id: string; memberId: string; title: string; pts: number; createdAt: string; month: string };
 type Outing = { memberId: string; k: string; v: string; at: string };
 
-class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
+class HttpError extends Error { constructor(public status: number, public key: MessageKey) { super(key); } }
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
-const fail = (status: number, message: string): never => { throw new HttpError(status, message); };
+const fail = (status: number, key: MessageKey): never => { throw new HttpError(status, key); };
 
 const rid = (bytes = 16) => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), b => b.toString(16).padStart(2, '0')).join('');
 async function sha256(s: string) {
@@ -60,9 +63,8 @@ function weekNumber(d = new Date()) {
 function monthInfo(d = new Date()) {
   const p = romeParts(d);
   const days = new Date(Date.UTC(p.y, p.m, 0)).getUTCDate();
-  const names = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
   const dow = (new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay() + 6) % 7; // 0 = Monday
-  return { day: p.d, days, name: names[p.m - 1], prevName: names[(p.m + 10) % 12], daysToMonday: 7 - dow };
+  return { day: p.d, days, daysToMonday: 7 - dow };
 }
 
 /* ---------- loading ---------- */
@@ -86,13 +88,13 @@ async function listVotes(gid: string) {
 async function auth(req: Request) {
   const h = req.headers.get('authorization') || '';
   const [gid, mid, token] = h.replace(/^Bearer\s+/i, '').split('.');
-  if (!gid || !mid || !token) fail(401, 'Accesso mancante. Riapri l’app.');
+  if (!gid || !mid || !token) fail(401, 'auth_missing');
   const s = data();
   const [group, member] = await Promise.all([
     s.get(`groups/${gid}`, { type: 'json' }) as Promise<Group | null>,
     s.get(`members/${gid}/${mid}`, { type: 'json' }) as Promise<Member | null>
   ]);
-  if (!group || !member || member.tokenHash !== await sha256(token)) fail(401, 'Accesso non valido. Entra di nuovo nel gruppo.');
+  if (!group || !member || member.tokenHash !== await sha256(token)) fail(401, 'auth_invalid');
   return { group: group!, member: member! };
 }
 
@@ -122,22 +124,30 @@ function standings(month: string, members: Member[], proofs: Proof[], votes: Rec
     members.find(m => m.id === a)!.joinedAt.localeCompare(members.find(m => m.id === b)!.joinedAt));
   return { pts, count, order };
 }
-function questDefFor(group: Group, questId: string, proposals: Proposal[]): (QuestDef & { kind: string }) | null {
+type Def = { title: string; pts: number; icon: string; video: boolean; kind: 'list' | 'idea' | 'group' };
+// questId is "L:{week}:{id}", "I:{week}:{id}" or "P:{proposalId}".
+function questDefFor(group: Group, questId: string, proposals: Proposal[]): Def | null {
   const [kind, wk, id] = questId.split(':');
-  if (kind === 'P') { const p = proposals.find(x => x.id === wk); return p ? { id: p.id, title: p.title, desc: 'Quest proposta dal gruppo.', pts: p.pts, icon: 'star', kind: 'group' } : null; }
+  if (kind === 'P') { const p = proposals.find(x => x.id === wk); return p ? { title: p.title, pts: p.pts, icon: 'star', video: false, kind: 'group' } : null; }
   const def = (kind === 'L' ? LIST : IDEAS).find(q => q.id === id);
   if (!def || Number(wk) !== weekNumber()) return null;
   const drawn = weekQuests(group.id, Number(wk));
   if (![...drawn.list, ...drawn.ideas].includes(def)) return null;
-  return { ...def, kind: kind === 'L' ? 'list' : 'idea' };
+  return { title: questText(def, 'it').title, pts: def.pts, icon: def.icon, video: !!def.video, kind: kind === 'L' ? 'list' : 'idea' };
+}
+// A proof's quest title in the reader's language (proposals keep the words their author wrote).
+function titleFor(questId: string, lang: Lang, fallback: string) {
+  const [kind, , id] = questId.split(':');
+  const def = kind === 'L' ? LIST.find(q => q.id === id) : kind === 'I' ? IDEAS.find(q => q.id === id) : null;
+  return def ? questText(def, lang).title : fallback;
 }
 
 /* ---------- routes ---------- */
 async function createGroup(req: Request) {
   const body = await req.json().catch(() => ({}));
   const name = cleanName(body.name), groupName = cleanName(body.groupName, 32);
-  if (!name) fail(400, 'Scrivi il tuo nome.');
-  if (!groupName) fail(400, 'Dai un nome al gruppo.');
+  if (!name) fail(400, 'name_required');
+  if (!groupName) fail(400, 'group_name_required');
   const s = data();
   const gid = rid(8);
   let code = '';
@@ -145,7 +155,7 @@ async function createGroup(req: Request) {
     const c = newCode();
     if ((await s.set(`codes/${c}`, gid, { onlyIfNew: true })).modified) code = c;
   }
-  if (!code) fail(500, 'Non sono riuscito a creare il codice del gruppo. Riprova.');
+  if (!code) fail(500, 'code_failed');
   const group: Group = { id: gid, name: groupName, code, createdAt: new Date().toISOString() };
   await s.setJSON(`groups/${gid}`, group);
   return json(await addMember(group, name), 201);
@@ -154,14 +164,14 @@ async function joinGroup(req: Request) {
   const body = await req.json().catch(() => ({}));
   const name = cleanName(body.name);
   const code = String(body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!name) fail(400, 'Scrivi il tuo nome.');
-  if (code.length !== 6) fail(400, 'Il codice del gruppo ha 6 caratteri.');
+  if (!name) fail(400, 'name_required');
+  if (code.length !== 6) fail(400, 'code_length');
   const s = data();
   const gid = await s.get(`codes/${code}`);
-  if (!gid) fail(404, 'Nessun gruppo con questo codice. Controlla e riprova.');
+  if (!gid) fail(404, 'code_unknown');
   const group = await s.get(`groups/${gid}`, { type: 'json' }) as Group;
   const members = await listJSON<Member>(`members/${gid}/`);
-  if (members.length >= 20) fail(400, 'Il gruppo è pieno: massimo 20 persone.');
+  if (members.length >= 20) fail(400, 'group_full');
   return json(await addMember(group, name), 201);
 }
 async function addMember(group: Group, name: string) {
@@ -171,10 +181,10 @@ async function addMember(group: Group, name: string) {
   return { auth: `${group.id}.${mid}.${token}`, groupId: group.id, memberId: mid };
 }
 
-async function state(req: Request) {
+async function state(req: Request, lang: Lang) {
   const { group, member } = await auth(req);
   const gid = group.id;
-  const [members, proofs, votes, proposals, accepts, outingNow] = await Promise.all([
+  const [members, allProofs, votes, allProposals, accepts, outingNow] = await Promise.all([
     listJSON<Member>(`members/${gid}/`),
     listJSON<Proof>(`proofs/${gid}/`),
     listVotes(gid),
@@ -184,6 +194,9 @@ async function state(req: Request) {
   ]);
   members.sort((a, b) => a.joinedAt.localeCompare(b.joinedAt));
   const ids = members.map(m => m.id);
+  const isMember = (id: string) => ids.includes(id);
+  const proofs = allProofs.filter(p => isMember(p.memberId));
+  const proposals = allProposals.filter(p => isMember(p.memberId));
   const color = (id: string) => COLORS[Math.max(0, ids.indexOf(id)) % COLORS.length];
   const month = monthKey(), last = prevMonth(month), week = weekNumber();
   const now = standings(month, members, proofs, votes);
@@ -195,7 +208,7 @@ async function state(req: Request) {
   const statusOf = (p: Proof) => verdict(p, votes[p.id], ids);
   const mine = (qid: string) => done.filter(p => p.memberId === member.id && p.questId === qid)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  const questView = (q: QuestDef, qid: string, kind: string) => {
+  const questView = (q: { title: string; desc: string; pts: number; icon: string; video?: boolean }, qid: string, kind: string) => {
     const p = mine(qid);
     const st = p ? statusOf(p).status : null;
     return {
@@ -205,33 +218,37 @@ async function state(req: Request) {
       doneBy: [...new Set(done.filter(x => x.questId === qid && x.memberId !== member.id && statusOf(x).status === 'approved').map(x => x.memberId))]
     };
   };
+  const view = (q: QuestDef, qid: string, kind: string) => questView({ ...questText(q, lang), pts: q.pts, icon: q.icon, video: q.video }, qid, kind);
   const drawn = weekQuests(gid, week);
   const quests = [
-    ...drawn.list.map(q => questView(q, `L:${week}:${q.id}`, 'list')),
-    ...drawn.ideas.map(q => questView(q, `I:${week}:${q.id}`, 'idea')),
+    ...drawn.list.map(q => view(q, `L:${week}:${q.id}`, 'list')),
+    ...drawn.ideas.map(q => view(q, `I:${week}:${q.id}`, 'idea')),
     ...proposals.filter(p => p.month === month).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-      .map(p => ({ ...questView({ id: p.id, title: p.title, desc: 'Quest proposta dal gruppo. Vale per tutto il mese.', pts: p.pts, icon: 'star' }, `P:${p.id}`, 'group'), by: p.memberId }))
+      .map(p => ({ ...questView({ title: p.title, desc: '', pts: p.pts, icon: 'star' }, `P:${p.id}`, 'group'), by: p.memberId }))
   ];
+  const title = (p: Proof) => titleFor(p.questId, lang, p.questTitle);
 
   const toVote = done.filter(p => p.memberId !== member.id && !votes[p.id]?.[member.id] && statusOf(p).status === 'pending')
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .map(p => ({ id: p.id, memberId: p.memberId, questTitle: p.questTitle, pts: p.pts, icon: p.icon, type: p.type, note: p.note, createdAt: p.createdAt, media: `/api/media/${gid}/${p.id}` }));
+    .map(p => ({ id: p.id, memberId: p.memberId, questTitle: title(p), pts: p.pts, icon: p.icon, type: p.type, note: p.note, createdAt: p.createdAt, media: `/api/media/${gid}/${p.id}` }));
 
-  const feed = done.flatMap(p => {
-    const v = statusOf(p);
-    const items = [{ who: p.memberId, kind: 'proof', text: `ha caricato ${p.type === 'video' ? 'un video' : 'una foto'} per «${p.questTitle}»`, at: p.createdAt }];
-    if (v.status === 'approved') {
-      const lastVote = Object.values(votes[p.id] || {}).map(x => x.at).sort().pop() || p.createdAt;
-      items.push({ who: p.memberId, kind: 'done', text: `ha completato «${p.questTitle}» (+${p.pts} pt)`, at: lastVote });
-    }
-    return items;
-  }).concat(proposals.map(p => ({ who: p.memberId, kind: 'proposal', text: `ha proposto «${p.title}»`, at: p.createdAt })))
-    .concat(members.map(m => ({ who: m.id, kind: 'join', text: 'è entrato nel gruppo', at: m.joinedAt })))
-    .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
+  // Events, in the order they happened; the app writes the sentences in the reader's language.
+  type Event = { who: string; kind: 'proof' | 'done' | 'proposal' | 'join'; quest?: string; pts?: number; media?: string; at: string };
+  const feed: Event[] = [
+    ...done.flatMap(p => {
+      const items: Event[] = [{ who: p.memberId, kind: 'proof', quest: title(p), media: p.type, at: p.createdAt }];
+      if (statusOf(p).status === 'approved') {
+        const lastVote = Object.values(votes[p.id] || {}).map(x => x.at).sort().pop() || p.createdAt;
+        items.push({ who: p.memberId, kind: 'done', quest: title(p), pts: p.pts, at: lastVote > p.createdAt ? lastVote : p.createdAt });
+      }
+      return items;
+    }),
+    ...proposals.map(p => ({ who: p.memberId, kind: 'proposal' as const, quest: p.title, at: p.createdAt })),
+    ...members.map(m => ({ who: m.id, kind: 'join' as const, at: m.joinedAt }))
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
 
   const titles: Record<string, string[]> = {};
-  const months = [...new Set(proofs.map(p => p.month))].filter(m => m < month).sort();
-  for (const m of months) {
+  for (const m of [...new Set(proofs.map(p => p.month))].filter(m => m < month).sort()) {
     const st = standings(m, members, proofs, votes);
     const w = st.order[0];
     if (w && st.pts[w] > 0) (titles[w] ??= []).push(m);
@@ -247,10 +264,8 @@ async function state(req: Request) {
     toVote,
     feed,
     king: king ? { memberId: king, month: last, pts: before.pts[king], outing: outingNow } : null,
-    lastMonth: { key: last, ranking: before.order.filter(id => before.pts[id] > 0), pts: before.pts },
-    outingOptions: OUTING,
     myProofs: done.filter(p => p.memberId === member.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 30)
-      .map(p => ({ id: p.id, questTitle: p.questTitle, type: p.type, status: statusOf(p).status, media: `/api/media/${gid}/${p.id}`, createdAt: p.createdAt }))
+      .map(p => ({ id: p.id, questTitle: title(p), type: p.type, status: statusOf(p).status, media: `/api/media/${gid}/${p.id}`, createdAt: p.createdAt }))
   });
 }
 
@@ -258,7 +273,7 @@ async function accept(req: Request) {
   const { group, member } = await auth(req);
   const { questId } = await req.json().catch(() => ({}));
   const proposals = await listJSON<Proposal>(`proposals/${group.id}/`);
-  if (!questId || !questDefFor(group, String(questId), proposals)) fail(400, 'Questa quest non è più disponibile.');
+  if (!questId || !questDefFor(group, String(questId), proposals)) fail(400, 'quest_gone');
   await data().setJSON(`accepts/${group.id}/${member.id}/${questId}`, { at: new Date().toISOString() });
   return json({ ok: true });
 }
@@ -269,19 +284,19 @@ async function startProof(req: Request) {
   const questId = String(body.questId || '');
   const proposals = await listJSON<Proposal>(`proposals/${group.id}/`);
   const def = questDefFor(group, questId, proposals);
-  if (!def) fail(400, 'Questa quest non è più disponibile.');
+  if (!def) fail(400, 'quest_gone');
   const type = body.type === 'video' ? 'video' : 'image';
-  if (def!.video && type !== 'video') fail(400, 'Per questa quest serve un video.');
+  if (def!.video && type !== 'video') fail(400, 'video_required');
   const mime = String(body.mime || (type === 'video' ? 'video/mp4' : 'image/jpeg')).slice(0, 60);
-  if (!/^(image|video)\/[\w.+-]+$/.test(mime)) fail(400, 'Formato del file non valido.');
+  if (!/^(image|video)\/[\w.+-]+$/.test(mime)) fail(400, 'bad_format');
   const size = Number(body.size);
-  if (!Number.isFinite(size) || size <= 0) fail(400, 'File vuoto.');
-  if (size > MAX_MEDIA) fail(413, 'Il file è troppo pesante: massimo 60 MB. Accorcia il video o abbassa la qualità.');
+  if (!Number.isFinite(size) || size <= 0) fail(400, 'empty_file');
+  if (size > MAX_MEDIA) fail(413, 'too_big');
   const existing = (await listJSON<Proof>(`proofs/${group.id}/`)).find(p => p.memberId === member.id && p.questId === questId && p.complete);
   if (existing) {
     const votes = await listVotes(group.id);
     const members = await listJSON<Member>(`members/${group.id}/`);
-    if (verdict(existing, votes[existing.id], members.map(m => m.id)).status !== 'rejected') fail(409, 'Hai già caricato una prova per questa quest.');
+    if (verdict(existing, votes[existing.id], members.map(m => m.id)).status !== 'rejected') fail(409, 'already_sent');
   }
   const pid = rid(12);
   const proof: Proof = {
@@ -295,12 +310,12 @@ async function startProof(req: Request) {
 async function uploadChunk(req: Request, pid: string, index: number) {
   const { group, member } = await auth(req);
   const proof = await data().get(`proofs/${group.id}/${pid}`, { type: 'json' }) as Proof | null;
-  if (!proof || proof.memberId !== member.id) fail(404, 'Prova non trovata.');
-  if (proof!.complete) fail(409, 'Questa prova è già stata inviata.');
-  if (!(index >= 0 && index < proof!.chunks)) fail(400, 'Pezzo del file non valido.');
+  if (!proof || proof.memberId !== member.id) fail(404, 'proof_missing');
+  if (proof!.complete) fail(409, 'proof_closed');
+  if (!(index >= 0 && index < proof!.chunks)) fail(400, 'bad_piece');
   const buf = await req.arrayBuffer();
   const expected = index === proof!.chunks - 1 ? proof!.size - CHUNK * index : CHUNK;
-  if (buf.byteLength !== expected) fail(400, `Pezzo del file incompleto (${buf.byteLength} invece di ${expected} byte). Riprova.`);
+  if (buf.byteLength !== expected) fail(400, 'short_piece');
   await media().set(`${group.id}/${pid}/${index}`, buf);
   return json({ ok: true });
 }
@@ -308,9 +323,9 @@ async function completeProof(req: Request, pid: string) {
   const { group, member } = await auth(req);
   const s = data();
   const proof = await s.get(`proofs/${group.id}/${pid}`, { type: 'json' }) as Proof | null;
-  if (!proof || proof.memberId !== member.id) fail(404, 'Prova non trovata.');
+  if (!proof || proof.memberId !== member.id) fail(404, 'proof_missing');
   const { blobs } = await media().list({ prefix: `${group.id}/${pid}/` });
-  if (blobs.length !== proof!.chunks) fail(400, 'Il file non è arrivato tutto. Riprova a caricarlo.');
+  if (blobs.length !== proof!.chunks) fail(400, 'incomplete');
   proof!.complete = true;
   await s.setJSON(`proofs/${group.id}/${pid}`, proof);
   return json({ ok: true });
@@ -323,7 +338,7 @@ async function serveMedia(req: Request, gid: string, pid: string) {
   const headers = { 'content-type': proof.mime, 'accept-ranges': 'bytes', 'cache-control': 'private, max-age=31536000, immutable' };
   const range = /bytes=(\d*)-(\d*)/.exec(req.headers.get('range') || '');
   if (range) {
-    let start = range[1] ? Number(range[1]) : Math.max(0, proof.size - Number(range[2]));
+    const start = range[1] ? Number(range[1]) : Math.max(0, proof.size - Number(range[2]));
     let end = range[1] && range[2] ? Number(range[2]) : proof.size - 1;
     if (start >= proof.size) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${proof.size}` } });
     const idx = Math.floor(start / CHUNK);
@@ -353,25 +368,25 @@ async function serveMedia(req: Request, gid: string, pid: string) {
 async function vote(req: Request) {
   const { group, member } = await auth(req);
   const { proofId, v } = await req.json().catch(() => ({}));
-  if (v !== 'yes' && v !== 'no') fail(400, 'Voto non valido.');
+  if (v !== 'yes' && v !== 'no') fail(400, 'bad_vote');
   const proof = await data().get(`proofs/${group.id}/${proofId}`, { type: 'json' }) as Proof | null;
-  if (!proof || !proof.complete) fail(404, 'Prova non trovata.');
-  if (proof!.memberId === member.id) fail(400, 'Non puoi votare la tua prova.');
+  if (!proof || !proof.complete) fail(404, 'proof_missing');
+  if (proof!.memberId === member.id) fail(400, 'own_vote');
   const { modified } = await data().setJSON(`votes/${group.id}/${proofId}/${member.id}`, { v, at: new Date().toISOString() } satisfies Vote, { onlyIfNew: true });
-  if (!modified) fail(409, 'Hai già votato questa prova.');
+  if (!modified) fail(409, 'voted');
   return json({ ok: true });
 }
 
 async function setOuting(req: Request) {
   const { group, member } = await auth(req);
   const { k, v } = await req.json().catch(() => ({}));
-  if (!OUTING[k]) fail(400, 'Scegli cosa decidere: dove si mangia, cosa si fa o cosa si vede.');
+  if (!(OUTING_KEYS as readonly string[]).includes(k)) fail(400, 'outing_kind');
   const value = cleanName(v, 60);
-  if (!value) fail(400, 'Scrivi o scegli la tua scelta.');
-  const res = await (await state(new Request(req.url, { headers: req.headers }))).json();
-  if (!res.king || res.king.memberId !== member.id) fail(403, 'Solo chi ha vinto il mese scorso può scegliere.');
+  if (!value) fail(400, 'outing_value');
+  const res = await (await state(new Request(req.url, { headers: req.headers }), 'it')).json();
+  if (!res.king || res.king.memberId !== member.id) fail(403, 'not_king');
   const { modified } = await data().setJSON(`outings/${group.id}/${monthKey()}`, { memberId: member.id, k, v: value, at: new Date().toISOString() } satisfies Outing, { onlyIfNew: true });
-  if (!modified) fail(409, 'Hai già fatto la tua scelta per questo mese.');
+  if (!modified) fail(409, 'outing_done');
   return json({ ok: true });
 }
 
@@ -380,30 +395,35 @@ async function propose(req: Request) {
   const body = await req.json().catch(() => ({}));
   const title = cleanName(body.title, 70);
   const pts = [20, 30, 50].includes(Number(body.pts)) ? Number(body.pts) : 30;
-  if (title.length < 4) fail(400, 'Scrivi cosa bisogna fare.');
+  if (title.length < 4) fail(400, 'proposal_short');
   const month = monthKey();
   const mineThisMonth = (await listJSON<Proposal>(`proposals/${group.id}/`)).filter(p => p.memberId === member.id && p.month === month);
-  if (mineThisMonth.length >= 3) fail(400, 'Puoi proporre al massimo 3 quest al mese.');
+  if (mineThisMonth.length >= 3) fail(400, 'proposal_limit');
   const id = rid(6);
   await data().setJSON(`proposals/${group.id}/${id}`, { id, memberId: member.id, title, pts, createdAt: new Date().toISOString(), month } satisfies Proposal);
   return json({ ok: true, id }, 201);
 }
 
+// Leaving deletes the member record and this phone's quest acceptances; the key stops working.
 async function leave(req: Request) {
   const { group, member } = await auth(req);
-  await data().delete(`members/${group.id}/${member.id}`);
+  const s = data();
+  const { blobs } = await s.list({ prefix: `accepts/${group.id}/${member.id}/` });
+  await Promise.all(blobs.map(b => s.delete(b.key)));
+  await s.delete(`members/${group.id}/${member.id}`);
   return json({ ok: true });
 }
 
-export default async (req: Request, context: Context) => {
+export default async (req: Request, _context: Context) => {
   const url = new URL(req.url);
+  const lang = pickLang(req.headers.get('x-lang') || req.headers.get('accept-language'));
   const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
   const route = `${req.method} ${parts[0] || ''}`;
   try {
     switch (route) {
       case 'POST groups': return await createGroup(req);
       case 'POST join': return await joinGroup(req);
-      case 'GET state': return await state(req);
+      case 'GET state': return await state(req, lang);
       case 'POST accept': return await accept(req);
       case 'POST votes': return await vote(req);
       case 'POST outing': return await setOuting(req);
@@ -420,11 +440,11 @@ export default async (req: Request, context: Context) => {
         if (parts.length === 3) return await serveMedia(req, parts[1], parts[2]);
         break;
     }
-    return json({ error: 'Pagina non trovata.' }, 404);
+    return json({ error: message(lang, 'not_found'), code: 'not_found' }, 404);
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    if (e instanceof HttpError) return json({ error: message(lang, e.key), code: e.key }, e.status);
     console.error(e);
-    return json({ error: 'Qualcosa è andato storto sul server. Riprova tra poco.' }, 500);
+    return json({ error: message(lang, 'server'), code: 'server' }, 500);
   }
 };
 

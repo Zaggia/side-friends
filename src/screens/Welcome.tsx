@@ -3,16 +3,11 @@ import { Dimensions, KeyboardAvoidingView, NativeScrollEvent, NativeSyntheticEve
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
+import { useI18n } from '../lib/i18n';
 import { useStore } from '../lib/store';
 import { font, radius, useTheme } from '../lib/theme';
 import { Icon, Mark } from '../components/Icon';
 import { Button, QuestIcon, SPRING, Txt, tap } from '../components/ui';
-
-const SLIDES = [
-  { h: 'Benvenuto in Side Friends', p: 'Le side quest del tuo gruppo di amici. Ogni amico ha il suo colore.' },
-  { h: 'Completa le quest', p: 'Ogni settimana escono 5 quest. Falle davvero e carica una foto o un video come prova.' },
-  { h: 'Vinci il mese', p: 'Il gruppo vota le prove e tu sali in classifica. Chi vince il mese sceglie una cosa della prossima uscita.' }
-];
 
 function Pop({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const s = useSharedValue(0);
@@ -21,11 +16,13 @@ function Pop({ children, delay = 0 }: { children: React.ReactNode; delay?: numbe
   return <Animated.View style={style}>{children}</Animated.View>;
 }
 
-export function Welcome() {
+// After leaving a group the intro is skipped: straight to the name, to create or join another one.
+export function Welcome({ skipIntro = false }: { skipIntro?: boolean }) {
   const t = useTheme();
+  const { t: tr } = useI18n();
   const insets = useSafeAreaInsets();
   const { signIn } = useStore();
-  const [step, setStep] = useState<'intro' | 'name' | 'create' | 'join'>('intro');
+  const [step, setStep] = useState<'intro' | 'name' | 'create' | 'join'>(skipIntro ? 'name' : 'intro');
   const [page, setPage] = useState(0);
   const [name, setName] = useState('');
   const [groupName, setGroupName] = useState('');
@@ -34,13 +31,14 @@ export function Welcome() {
   const [busy, setBusy] = useState(false);
   const scroller = useRef<ScrollViewInstance>(null);
   const W = Math.min(Dimensions.get('window').width, 520);
+  const slides = tr.slides;
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / W);
     if (i !== page) { setPage(i); tap(); }
   };
   const next = () => {
-    if (page < SLIDES.length - 1) { scroller.current?.scrollTo({ x: (page + 1) * W, animated: true }); setPage(page + 1); }
+    if (page < slides.length - 1) { scroller.current?.scrollTo({ x: (page + 1) * W, animated: true }); setPage(page + 1); }
     else setStep('name');
   };
   const submit = async () => {
@@ -50,7 +48,7 @@ export function Welcome() {
       tap('success');
       await signIn(res.auth);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Qualcosa è andato storto.');
+      setError(e instanceof Error ? e.message : tr.genericError);
       tap('warning');
     } finally { setBusy(false); }
   };
@@ -64,7 +62,7 @@ export function Welcome() {
     return (
       <View style={{ flex: 1, backgroundColor: t.ground, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 16, alignItems: 'center' }}>
         <ScrollView ref={scroller} horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onScroll} onScroll={Platform.OS === 'web' ? onScroll : undefined} scrollEventThrottle={64} style={{ width: W, flex: 1 }}>
-          {SLIDES.map((s, i) => (
+          {slides.map(([h, p], i) => (
             <View key={i} style={{ width: W, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', gap: 20 }}>
               {i === page || i === 0 ? (
                 <Pop key={page === i ? 'on' : 'off'} delay={80}>
@@ -73,16 +71,16 @@ export function Welcome() {
                     : <QuestIcon icon="crown" color="sole" size={120} />}
                 </Pop>
               ) : <View style={{ height: 150 }} />}
-              <Txt v="display" style={{ textAlign: 'center', fontSize: 28 }}>{s.h}</Txt>
-              <Txt muted style={{ textAlign: 'center', fontSize: 17, lineHeight: 24, maxWidth: 320 }}>{s.p}</Txt>
+              <Txt v="display" style={{ textAlign: 'center', fontSize: 28 }}>{h}</Txt>
+              <Txt muted style={{ textAlign: 'center', fontSize: 17, lineHeight: 24, maxWidth: 320 }}>{p}</Txt>
             </View>
           ))}
         </ScrollView>
         <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 16 }}>
-          {SLIDES.map((_, i) => <View key={i} style={{ width: i === page ? 28 : 10, height: 10, borderRadius: 5, backgroundColor: i === page ? t.azzurro : t.line }} />)}
+          {slides.map((_, i) => <View key={i} style={{ width: i === page ? 28 : 10, height: 10, borderRadius: 5, backgroundColor: i === page ? t.azzurro : t.line }} />)}
         </View>
         <View style={{ width: W, paddingHorizontal: 16 }}>
-          <Button title={page === SLIDES.length - 1 ? 'Iniziamo' : 'Avanti'} onPress={next} />
+          <Button title={page === slides.length - 1 ? tr.start : tr.next} onPress={next} />
         </View>
       </View>
     );
@@ -94,27 +92,27 @@ export function Welcome() {
         <View style={{ alignItems: 'center' }}><Mark size={72} colors={[t.azzurro, t.sole, t.fragola]} /></View>
         {step === 'name' ? (
           <>
-            <Txt v="display" style={{ textAlign: 'center' }}>Come ti chiami?</Txt>
-            <Txt muted style={{ textAlign: 'center' }}>È il nome che vedranno i tuoi amici.</Txt>
-            {input({ value: name, onChangeText: setName, placeholder: 'Il tuo nome', autoFocus: true, maxLength: 24, autoCapitalize: 'words', returnKeyType: 'next' })}
-            <Button title="Crea un gruppo" icon="plus" disabled={!name.trim()} onPress={() => { setError(''); setStep('create'); }} />
-            <Button title="Entra con un codice" kind="ghost" disabled={!name.trim()} onPress={() => { setError(''); setStep('join'); }} />
+            <Txt v="display" style={{ textAlign: 'center' }}>{tr.nameTitle}</Txt>
+            <Txt muted style={{ textAlign: 'center' }}>{tr.nameSub}</Txt>
+            {input({ value: name, onChangeText: setName, placeholder: tr.namePh, autoFocus: true, maxLength: 24, autoCapitalize: 'words', returnKeyType: 'next' })}
+            <Button title={tr.createGroup} icon="plus" disabled={!name.trim()} onPress={() => { setError(''); setStep('create'); }} />
+            <Button title={tr.joinWithCode} kind="ghost" disabled={!name.trim()} onPress={() => { setError(''); setStep('join'); }} />
           </>
         ) : step === 'create' ? (
           <>
-            <Txt v="display" style={{ textAlign: 'center' }}>Nuovo gruppo</Txt>
-            <Txt muted style={{ textAlign: 'center' }}>Dopo ti do un codice da mandare agli amici.</Txt>
-            {input({ value: groupName, onChangeText: setGroupName, placeholder: 'Es. I Soliti', autoFocus: true, maxLength: 32, onSubmitEditing: submit })}
-            <Button title={busy ? 'Creo il gruppo…' : 'Crea il gruppo'} disabled={busy || !groupName.trim()} onPress={submit} />
-            <Button title="Indietro" kind="ghost" onPress={() => setStep('name')} />
+            <Txt v="display" style={{ textAlign: 'center' }}>{tr.newGroup}</Txt>
+            <Txt muted style={{ textAlign: 'center' }}>{tr.newGroupSub}</Txt>
+            {input({ value: groupName, onChangeText: setGroupName, placeholder: tr.groupPh, autoFocus: true, maxLength: 32, onSubmitEditing: submit })}
+            <Button title={busy ? tr.creating : tr.createIt} disabled={busy || !groupName.trim()} onPress={submit} />
+            <Button title={tr.back} kind="ghost" onPress={() => setStep('name')} />
           </>
         ) : (
           <>
-            <Txt v="display" style={{ textAlign: 'center' }}>Entra nel gruppo</Txt>
-            <Txt muted style={{ textAlign: 'center' }}>Chiedi il codice di 6 caratteri a chi ha creato il gruppo.</Txt>
+            <Txt v="display" style={{ textAlign: 'center' }}>{tr.joinTitle}</Txt>
+            <Txt muted style={{ textAlign: 'center' }}>{tr.joinSub}</Txt>
             {input({ value: code, onChangeText: s => setCode(s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)), placeholder: 'ABC123', autoFocus: true, autoCapitalize: 'characters', autoCorrect: false, onSubmitEditing: submit })}
-            <Button title={busy ? 'Entro…' : 'Entra'} disabled={busy || code.length !== 6} onPress={submit} />
-            <Button title="Indietro" kind="ghost" onPress={() => setStep('name')} />
+            <Button title={busy ? tr.joining : tr.join} disabled={busy || code.length !== 6} onPress={submit} />
+            <Button title={tr.back} kind="ghost" onPress={() => setStep('name')} />
           </>
         )}
         {error ? (
